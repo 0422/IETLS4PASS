@@ -1,0 +1,27 @@
+# 2026-11-19：使用与 Della CRM 锁定版本一致的 Tauri 2 和 bundled SQLite，建立独立桌面进程。
+[package]
+name = "ietls4pass"
+version = "0.1.0"
+description = "IETLS4PASS desktop application"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "=2.7.4", features = [] }
+
+[dependencies]
+tauri = { version = "=2.12.5", features = [] }
+rusqlite = { version = "=0.41.1", features = ["bundled"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+# 2026-11-19：备份 JSON 经前端读写后维持浮点数的往返精度。
+serde_json = { version = "=1.0.154", features = ["float_roundtrip"] }
+sha2 = "=0.10.9"
+# 2026-11-21：工作区语音附件以 Base64 随 JSON 备份保存。
+base64 = "=0.22.1"
+# 2026-11-19：使用 Della CRM 已锁定的原生目录选择与 PDF 打开组件。
+tauri-plugin-dialog = "=2.8.4"
+# tauri-plugin-opener = "=2.7.4"
+# 2026-11-19：与 Della CRM 的本机开文件组件版本一致。
+tauri-plugin-opener = "=2.7.3"
+# 2026-11-21：复用 BeadDiffV2 的 Rust HTTPS 客户端调用文本模型。
+# 2026-11-21：语音转写使用 multipart 上传 PCM WAV。
+reqwest = { version = "=0.12.28", default-features = false, features = ["json", "rustls-tls", "multipart"] }
