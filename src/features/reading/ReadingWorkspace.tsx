@@ -2,7 +2,7 @@
 import { useQuery } from "@tanstack/react-query";
 // 2026-11-19：题图在绘制答题控件前就绪，PDF 通过已绑定的目录打开。
 import { useCallback, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import type { PracticeDraft, ReadingAsset } from "../../domain/types";
 import { examKey, MAIN_BANK, mainMedia, readingAsset, useBankIndex, useCustomBanks } from "../../services/banks";
 import { useFolderMedia } from "../../services/folderBanks";
@@ -18,7 +18,6 @@ export function ReadingWorkspace() {
   const [search] = useSearchParams();
   const replayId = search.get("mode") === "replay" ? search.get("record") ?? "" : "";
   const study = search.get("mode") === "study";
-  const suiteId = search.get("suite") ?? "";
   const index = useBankIndex();
   const banks = useCustomBanks();
   const aliases = bankId === MAIN_BANK ? index.data?.aliases : banks.data?.find((folder) => folder.id === bankId)?.value.catalog?.aliases;
@@ -34,8 +33,6 @@ export function ReadingWorkspace() {
   const error = asset.error || (bankId === MAIN_BANK ? index.error : banks.error);
   if (error) return <p className="notice danger" role="alert">{errorText(error)}</p>;
   if (bankId !== MAIN_BANK && !desktopAvailable()) return <p className="notice">自定义题库在桌面应用中可用。</p>;
-  // 2026-11-21：旧链接的返回文字指向季度新题中的阅读练习。
-  if (suiteId && !replayId) return <p className="notice">阅读套题已停用。 <Link to="/library">返回阅读练习</Link></p>;
   if (!asset.data || resources.loading) return <p className="muted">正在读取题目与本机题图…</p>;
   const pdf = bankId === MAIN_BANK ? null : <div className="bank-media-strip"><LocalPdf folderId={bankId} relative={asset.data.pdfPath} /></div>;
   const missing = resources.missing.length > 0 ? <p className="notice">有 {resources.missing.length} 张题图当前无法读取。</p> : null;

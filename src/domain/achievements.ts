@@ -1,6 +1,6 @@
 // 2026-11-19：移植上游成就阈值，以正式练习和实际日期推算解锁。
 // 2026-11-23：成就和总览按同一批正式提交统计。
-import { submissions, usableScore } from "./records";
+import { usableScore } from "./records";
 import type { PracticeRecord } from "./types";
 
 export interface Unlock { unlockedAt: string | null }
@@ -42,8 +42,7 @@ export function projectAchievements(records: PracticeRecord[]) {
   const set = (id: string, timestamp: string | null) => {
     if (!candidates.has(id)) candidates.set(id, { unlockedAt: timestamp });
   };
-  // 2026-11-23：旧套题以已提交的子篇计入成就，去掉整套折算。
-  const items = submissions(records).map((record) => {
+  const items = records.map((record) => {
     const ms = Date.parse(record.submittedAt);
     return { record, ms, date: Number.isFinite(ms) ? new Date(ms).toISOString() : null };
   }).sort((a, b) => (a.date ? a.ms : Infinity) - (b.date ? b.ms : Infinity));

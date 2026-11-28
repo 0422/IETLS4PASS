@@ -18,6 +18,11 @@
   --accent-light: #e4f3ee;
   --danger: #a03234;
   --danger-light: #fff1ef;
+  /* 2026-11-27：听力判分使用高对比度文字与浅色底。 */
+  --correct-answer: #14532d;
+  --correct-answer-bg: #dcfce7;
+  --incorrect-answer: #991b1b;
+  --incorrect-answer-bg: #fee2e2;
   --focus: #258eaa;
   --target: #fff1bf;
   color-scheme: light;
@@ -35,6 +40,12 @@
   --accent-light: #25493f;
   --danger: #ffa8a8;
   --danger-light: #4a292e;
+  /* 2026-11-27：暗色题面上的正确答案使用浅绿色。 */
+  --correct-answer: #86efac;
+  /* 2026-11-27：暗色题面也用不同的填充色区分判分。 */
+  --correct-answer-bg: #153d2c;
+  --incorrect-answer: #fda4af;
+  --incorrect-answer-bg: #4b2330;
   --focus: #77cce2;
   --target: #4f4627;
   color-scheme: dark;
@@ -53,6 +64,12 @@
     --accent-light: #25493f;
     --danger: #ffa8a8;
     --danger-light: #4a292e;
+    /* 2026-11-27：跟随系统暗色时使用相同的正确答案颜色。 */
+    --correct-answer: #86efac;
+    /* 2026-11-27：系统暗色与手动暗色共用判分配色。 */
+    --correct-answer-bg: #153d2c;
+    --incorrect-answer: #fda4af;
+    --incorrect-answer-bg: #4b2330;
     --focus: #77cce2;
     --target: #4f4627;
     color-scheme: dark;
@@ -77,7 +94,8 @@ svg { flex: none; }
 /* 2026-11-19：为应用页面增加圆角边框，固定侧栏和正文的可视区域。 */
 .workspace {
   /* 2026-11-19：展开和折叠切换左列宽度，正文使用剩余空间。 */
-  --sidebar-width: 200px;
+  /* 2026-11-27：缩小导航展开列，减少模块文字右侧的空白。 */
+  --sidebar-width: 168px;
   /* 2026-11-20：品牌行和桌面窗口按钮共用同样的顶部间距与高度。 */
   --brand-row-inset: 10px;
   --brand-row-height: 38px;
@@ -91,12 +109,15 @@ svg { flex: none; }
 /* 2026-11-19：采用参考工作区的紧凑品牌行，在同一行对齐图标、名称和切换按钮。 */
 /* 2026-11-23：让工作区渐变透过侧栏，文字和交互状态随明暗主题切换。 */
 .sidebar { min-height: 0; display: flex; flex-direction: column; color: var(--text); padding: var(--brand-row-inset) 9px 9px; }
-.sidebar-brand-row { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 4px; min-height: var(--brand-row-height); margin-bottom: 12px; padding-inline: 3px; }
-.brand { color: var(--text); display: flex; align-items: center; gap: 8px; min-width: 0; text-decoration: none; }
+/* 2026-11-27：在共享渐变上标出侧边栏与正文的边界。 */
+.sidebar { border-inline-end: 1px solid color-mix(in srgb, var(--border) 80%, var(--text)); }
+/* 2026-11-27：压缩品牌行横向间距，留出完整软件名的宽度。 */
+.sidebar-brand-row { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 2px; min-height: var(--brand-row-height); margin-bottom: 12px; padding-inline: 1px; }
+.brand { color: var(--text); display: flex; align-items: center; gap: 6px; min-width: 0; text-decoration: none; }
 .brand:hover { text-decoration: none; }
 .brand-icon { width: 31px; height: 31px; flex: none; display: grid; place-items: center; background: #286353; color: #f6fbff; border-radius: 9px; }
 .brand strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .875rem; }
-.sidebar-toggle { flex: none; width: 27px; height: 28px; display: grid; place-items: center; border-radius: 6px; color: var(--text); }
+.sidebar-toggle { flex: none; width: 24px; height: 28px; display: grid; place-items: center; border-radius: 6px; color: var(--text); }
 .sidebar-toggle:hover, .nav-link:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
 /* 2026-11-19：折叠栏里的书本按钮沿用品牌配色和键盘焦点。 */
 .sidebar-expand:hover { filter: brightness(1.12); }
@@ -147,6 +168,21 @@ svg { flex: none; }
   overflow: auto;
 }
 .window-titlebar { grid-area: titlebar; display: flex; padding-inline-end: 8px; }
+/* 2026-11-27：倒计时居于整个窗口中线，鼠标仍可拖动标记下方的标题栏。 */
+.window-titlebar { position: relative; }
+.window-exam-countdown {
+  position: absolute;
+  inset-inline-start: calc((100% - var(--sidebar-width)) / 2);
+  inset-block: var(--brand-row-inset) 0;
+  display: flex;
+  align-items: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+  color: var(--muted);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .window-drag-region { flex: 1 1 auto; }
 .window-controls { display: flex; align-items: center; gap: 2px; padding-block-start: var(--brand-row-inset); }
 .window-controls button { display: grid; place-items: center; width: 35px; height: 30px; border-radius: 6px; color: var(--muted); }
@@ -163,6 +199,10 @@ svg { flex: none; }
 .study-view-tabs a { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; color: var(--muted); border-bottom: 2px solid transparent; text-decoration: none; }
 .study-view-tabs a:hover { color: var(--text); }
 .study-view-tabs a[aria-current="page"] { border-bottom-color: var(--focus); color: var(--link); font-weight: 650; }
+/* 2026-11-28：用短分隔线在同一行区分历年真题与季度新题。 */
+.speaking-view-label { align-self: center; color: var(--muted); font-size: .875rem; white-space: nowrap; }
+.speaking-view-tabs .speaking-seasonal-tab { position: relative; margin-inline-start: 8px; }
+.speaking-seasonal-tab::before { content: ""; position: absolute; inset-inline-start: -5px; inset-block: 9px; border-inline-start: 1px solid var(--border); }
 .section-heading { justify-content: space-between; margin-bottom: 13px; }
 .section-heading a, .table-actions a, .back-link, .text-button { display: inline-flex; align-items: center; gap: 6px; }
 .back-link { margin-bottom: 8px; font-size: .85rem; }
@@ -257,17 +297,30 @@ tbody tr:hover { background: var(--surface-muted); }
 .reading-score-dialog .section-heading h2, .activity .section-heading h2 { margin-bottom: 0; }
 /* 2026-11-23：四科数字和进度对应四列，学习活动单独占整行。 */
 .study-overview { display: grid; gap: 16px; }
-.metrics, .study-progress-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
-.metric { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 6px 10px; }
+/* 2026-11-27：练习经验使用总览中的折叠卡片。 */
+.study-experience > summary { font-size: 1.06rem; font-weight: 680; }
+.study-experience > p { margin-block-start: 10px; }
+/* 2026-11-27：学习成就的标题和解锁计数同排，展开后显示徽章。 */
+.study-achievements > summary { display: flex; align-items: center; gap: 8px; list-style: none; font-size: 1.06rem; font-weight: 680; }
+.study-achievements > summary::-webkit-details-marker { display: none; }
+.study-achievements > summary small { margin-inline-start: auto; color: var(--muted); font-size: .85rem; font-weight: 500; white-space: nowrap; }
+.study-achievements[open] .study-achievements-chevron { transform: rotate(90deg); }
+.study-achievements > .milestone-list { margin-block-start: 13px; }
+/* 2026-11-27：指标随正文实际宽度换列，标题和数值保持单行。 */
+.study-overview { container: study-overview / inline-size; }
+.metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.metric { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 12px; }
 .metric svg, .activity h2 svg { color: var(--link); }
-.metric > span { color: var(--muted); }
-.metric > strong { grid-column: 1 / -1; font-size: clamp(1.4rem, 2.8vw, 2.16rem); line-height: 1.3; letter-spacing: -.04em; }
+.metric > span { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.metric > strong { font-size: clamp(1.05rem, 1.9cqi, 1.45rem); line-height: 1.3; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .metric > strong small { font-size: .85rem; font-weight: 500; letter-spacing: normal; color: var(--muted); }
-.study-progress-item { display: grid; align-content: start; gap: 8px; min-width: 0; padding: 12px; border-radius: 8px; background: var(--surface-muted); }
-.study-progress-item .muted { overflow-wrap: anywhere; }
-.study-progress-count { font-variant-numeric: tabular-nums; font-size: 1.15rem; font-weight: 650; }
-.study-progress-count small { color: var(--muted); font-size: .8rem; font-weight: 500; white-space: nowrap; }
-progress { width: 100%; height: 8px; accent-color: var(--accent); }
+.metric-status { font-size: .8rem; }
+@container study-overview (max-width: 752px) {
+  .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container study-overview (max-width: 340px) {
+  .metrics { grid-template-columns: minmax(0, 1fr); }
+}
 /* 2026-11-19：让成就进度随工作区宽度自动换行。 */
 .milestone-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(133px, 1fr)); gap: 10px; }
 .milestone { display: grid; gap: 6px; background: var(--surface-muted); border-radius: 6px; padding: 8px 10px; }
@@ -378,6 +431,8 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); }
 .paper-column mark[data-saved-highlight] { background: #ffe48e; color: #29313a; }
 /* 2026-11-23：听力题目使用与阅读批注相同的高亮颜色。 */
 ::highlight(listening-question-text) { background-color: #ffe48e; color: #29313a; }
+/* 2026-11-27：精听使用独立的手动高亮，兼容播放中的句子标记。 */
+::highlight(listening-transcript-text) { background-color: #ffe48e; color: #29313a; }
 .question-navigation button.marked { border-color: var(--focus); box-shadow: inset 0 -2px 0 var(--focus); }
 .question-navigation button[aria-current] { outline: 1px solid var(--focus); }
 /* 2026-11-21：按正文实际宽度安排答题栏，紧凑窗口将进度和题号放到下一行。 */
@@ -406,8 +461,6 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); }
 .reading-notes label { display: grid; gap: 4px; margin-block: 10px; }
 .reading-notes li { display: flex; justify-content: space-between; gap: 10px; margin-block: 5px; }
 .reading-measurement p { margin-block: 8px; }
-.interrupted-detail { border-top: 1px solid var(--border); padding-block: 10px; }
-.interrupted-detail p, .interrupted-detail ul { margin: 8px 0; }
 /* 2026-11-19：显示本地题库目录和媒体操作。 */
 .folder-list { flex: 1 1 100%; }
 .folder-path { display: block; font-size: .78rem; overflow-wrap: anywhere; }
@@ -438,11 +491,15 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); }
 .result-summary span { color: var(--muted); }
 .result-summary a { margin-left: auto; }
 .review { margin-top: 12px; }
+/* 2026-11-27：总分和答案对比标题同排。 */
+.answer-review-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.answer-review-heading h2 { margin: 0; }
+.listening-compare-score { color: var(--correct-answer); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .review summary, .legacy-data summary { font-weight: 650; color: var(--link); }
 .review p { white-space: pre-wrap; margin-block: 8px; }
 .explanation-list, .passage-notes { margin-top: 13px; }
 .explanation-list details { padding: 8px 0; border-bottom: 1px solid var(--border); }
-.record-child, .legacy-data { margin-top: 12px; }
+.legacy-data { margin-top: 12px; }
 .legacy-data pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .flashcard { max-width: 700px; display: grid; justify-items: center; gap: 12px; padding: 30px; text-align: center; }
 .flashcard h2 { font-size: 2rem; margin: 0; }
@@ -540,6 +597,16 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); }
 .settings-card { margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px 18px; }
 /* 2026-11-21：说明移除后，区块标题用默认外边距与操作控件居中对齐。 */
 .settings-card select { margin-left: 6px; }
+/* 2026-11-27：考试目标和日期沿用设置表单控件，目标总分在同一行突出显示。 */
+.exam-plan-settings { display: grid; justify-content: stretch; gap: 12px; }
+.exam-plan-settings > :is(h2, .notice) { margin-block: 0; }
+.exam-plan-bands, .exam-plan-date { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.exam-plan-bands label, .exam-plan-overall { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.exam-plan-bands select { min-width: 64px; margin-inline-start: 0; font-variant-numeric: tabular-nums; }
+.exam-plan-overall { padding: 5px 9px; border-radius: 7px; color: var(--text); background: var(--accent-light); }
+.exam-plan-overall output { min-width: 3ch; color: var(--link); font-size: 1rem; font-weight: 700; font-variant-numeric: tabular-nums; text-align: center; }
+.exam-plan-date { position: relative; }
+.exam-date-popover { inset-inline-start: 0; inset-inline-end: auto; width: min(100%, 17.5rem); }
 /* 2026-11-21：模型连接列表可换行，编辑表单集中对齐输入框。 */
 .ai-model-summary { display: grid; min-width: 0; gap: 2px; overflow-wrap: anywhere; }
 .ai-model-summary button { justify-self: start; text-align: start; }
@@ -550,7 +617,6 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); }
 .ai-model-advanced > label { margin-block-start: 8px; }
 .ai-model-form .table-actions { justify-content: flex-end; }
 .diagnostic { flex-basis: 100%; border-top: 1px solid var(--border); padding-top: 9px; }
-.listening-part { margin-bottom: 12px; }
 .listening-questions { display: grid; gap: 12px; margin-top: 12px; }
 .listening-questions label { display: grid; grid-template-columns: 1fr minmax(125px, 30%); align-items: center; gap: 8px; }
 /* 2026-11-19：场景选择、真题列表和单节练习沿用应用的主题颜色。 */
@@ -618,7 +684,50 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); }
 .listening-attempt-player .listening-player-actions { margin-inline-start: auto; justify-content: flex-end; }
 .listening-attempt-time { border-inline-start: 1px solid var(--border); padding-inline-start: 8px; white-space: nowrap; }
 /* 2026-11-23：紧凑的题面高亮工具栏固定在听力题目滚动区上方。 */
-.listening-annotation-actions { margin-block-end: 8px; }
+/* 2026-11-27：高亮和精听共用工具栏，分栏后让题目和原文分别滚动。 */
+.listening-question-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-block-end: 8px; }
+.listening-intensive-toggle { margin-inline-start: auto; }
+.listening-question-layout { display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 12px; min-width: 0; }
+.listening-question-layout.with-intensive { grid-template-columns: minmax(0, 3fr) minmax(255px, 2fr); }
+.listening-question-content, .listening-intensive-pane { min-height: 0; min-width: 0; }
+.listening-question-content { overflow: auto; }
+.listening-question-content > :is(.local-listening-paper, .listening-questions) { margin-block-start: 0; }
+.listening-question-content .local-listening-paper .paper-column { height: auto; min-height: 0; max-height: none; }
+/* 2026-11-27：交卷后的输入值和已选选项保留红绿文字，包括禁用状态的原题控件。 */
+.listening-question-content :is([data-answer-feedback="correct"],
+  input[data-answer-feedback="correct"] + :is(label, span)) {
+  --answer-feedback-color: var(--correct-answer);
+  --answer-feedback-bg: var(--correct-answer-bg);
+}
+.listening-question-content :is([data-answer-feedback="incorrect"],
+  input[data-answer-feedback="incorrect"] + :is(label, span)) {
+  --answer-feedback-color: var(--incorrect-answer);
+  --answer-feedback-bg: var(--incorrect-answer-bg);
+}
+/* 2026-11-27：加粗并填充已判分答案，未作答和未选选项沿用原色。 */
+.listening-question-content :is([data-answer-feedback], input[data-answer-feedback] + :is(label, span)) {
+  color: var(--answer-feedback-color);
+  background-color: var(--answer-feedback-bg);
+  font-weight: 700;
+}
+.listening-question-content :is(label[data-answer-feedback], input[data-answer-feedback] + :is(label, span)) { border-radius: 4px; }
+.listening-question-content :is(input, select, textarea)[data-answer-feedback] {
+  opacity: 1;
+  border-color: var(--answer-feedback-color);
+  accent-color: var(--answer-feedback-color);
+  -webkit-text-fill-color: var(--answer-feedback-color);
+}
+.listening-intensive-pane { padding: 12px; display: flex; flex-direction: column; overflow: auto; }
+.listening-intensive-toggle { min-height: 32px; padding: 4px 10px; }
+/* 2026-11-27：精听进度和时间一排，音量、语速和循环播放紧凑排列。 */
+.listening-player-compact { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin: 0 0 8px; padding: 8px; }
+.listening-player-compact .listening-player-actions { flex-wrap: nowrap; gap: 6px; }
+.listening-player-compact .listening-volume { flex: 1 1 44px; min-width: 42px; gap: 4px; }
+.listening-player-compact .listening-volume input { flex: 1; width: 0; }
+.listening-player-compact .listening-player-actions > label { white-space: nowrap; }
+.listening-player-compact select { padding: 2px 4px; }
+.listening-player-compact input[type="checkbox"] { vertical-align: middle; }
+.listening-intensive-pane .listening-transcript { flex: 1 0 140px; max-height: none; }
 .listening-annotation-actions .button { min-height: 32px; padding: 4px 10px; }
 .listening-media { margin-block: 8px 12px; }
 .listening-media:empty { display: none; }
@@ -627,6 +736,8 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); }
 .listening-transcript li { padding: 6px 8px; border-radius: 6px; }
 .listening-transcript li[aria-current="true"] { background: var(--accent-light); color: var(--link); }
 .listening-transcript button { width: 100%; display: flex; align-items: baseline; gap: 12px; text-align: start; }
+/* 2026-11-27：原文可选中后手动高亮，同时保留点击句子的定位行为。 */
+.listening-transcript button { user-select: text; }
 .listening-question-text { margin: 12px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 /* 2026-11-20：听力导出的选择题和地图匹配使用原题号，选项与答案控件清晰对齐。 */
 .listening-export-choices { display: grid; gap: 5px; }
@@ -639,10 +750,6 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); }
 .speaking-detail-heading { justify-content: flex-start; gap: 6px 14px; }
 .speaking-detail-heading h1 { font-size: 1.16rem; letter-spacing: 0; overflow-wrap: anywhere; }
 /* 2026-11-19：口语题卡保留题源换行，问题按原顺序编号。 */
-.speaking-content { margin-bottom: 12px; }
-.speaking-content p { white-space: pre-wrap; }
-.speaking-content ol { list-style: decimal; padding-inline-start: 1.5em; }
-.speaking-content li + li { margin-top: 7px; }
 /* 2026-11-21：考官播报、题卡和回答记录共用单栏口语练习区。 */
 .exercise-page > .speaking-practice { display: flex; flex-direction: column; gap: 12px; flex: 1 0 310px; min-height: 0; }
 .speaking-toolbar, .speaking-pace { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
@@ -702,8 +809,6 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); }
 
 @media (max-width: 1040px) {
   /* 2026-11-20：窄窗口减少每行的分类按钮，留出标签宽度。 */
-  /* 2026-11-19：窄桌面缩小展开宽度，折叠宽度沿用常驻图标栏。 */
-  .workspace { --sidebar-width: 172px; }
   .practice-actions { min-width: auto; }
   .page-heading { align-items: flex-start; }
 }
@@ -716,6 +821,13 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); }
   /* 2026-11-21：窄屏预览底色也直接铺满视口。 */
   .workspace:not(.desktop-workspace) { display: block; height: auto; min-height: 100dvh; overflow: clip; }
   .workspace:not(.desktop-workspace) .sidebar { padding: 12px; }
+  /* 2026-11-27：窄网页预览中的侧栏在正文上方，随布局切换分隔线方向。 */
+  .workspace:not(.desktop-workspace) .sidebar {
+    border-inline-end: 0;
+    border-block-end: 1px solid color-mix(in srgb, var(--border) 80%, var(--text));
+  }
+  .listening-question-layout.with-intensive { grid-template-columns: minmax(0, 1fr); }
+  .listening-intensive-pane .listening-transcript { max-height: min(45dvh, 420px); }
   .sidebar-navigation { display: flex; flex-wrap: wrap; gap: 8px 16px; overflow: visible; }
   .sidebar-group { display: flex; flex-wrap: wrap; }
   .sidebar-group-title { flex-basis: 100%; padding-inline: 8px; }
@@ -728,8 +840,6 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); }
   .nav-link { padding: 6px 8px; gap: 5px; }
   .page-heading { flex-wrap: wrap; }
   .reading-paper { grid-template-columns: 1fr; }
-  /* 2026-11-23：窄窗口四科卡片分成两列，活动卡继续占满宽度。 */
-  .metrics, .study-progress-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .paper-column { height: auto; min-height: 230px; max-height: 76dvh; }
   /* 2026-11-21：窄视口依次显示两栏，作文输入区保留可用高度。 */
   .writing-paper { grid-template-rows: auto auto; }
@@ -743,11 +853,11 @@ progress { width: 100%; height: 8px; accent-color: var(--accent); }
   .exercise-page { display: flex; flex-direction: column; flex: 1 0 0; min-height: 0; }
   .exercise-page > * { flex: none; }
   .exercise-page > .back-link { align-self: flex-start; }
-  .exercise-page > :is(.reading-paper, .local-listening-paper, .listening-questions, .listening-transcript) { flex: 1 0 250px; min-height: 0; }
+  .exercise-page > :is(.reading-paper, .listening-transcript) { flex: 1 0 250px; min-height: 0; }
+  /* 2026-11-27：听力的题面和精听面板填满顶部工具栏下方的空间。 */
+  .exercise-page > .listening-question-layout { flex: 1 0 250px; min-height: 0; }
   .exercise-page > .reading-paper, .exercise-page .local-listening-paper > .reading-paper { grid-template-rows: minmax(0, 1fr); }
   .exercise-page .paper-column { height: auto; min-height: 0; }
-  .exercise-page > .local-listening-paper { display: grid; grid-template-rows: minmax(0, 1fr); margin-block: 0; }
-  .exercise-page > .listening-questions { align-content: start; overflow: auto; margin-block-start: 0; }
   .exercise-page > .listening-transcript { max-height: none; }
   .writing-session .writing-answer { min-height: 0; }
 }

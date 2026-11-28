@@ -1,5 +1,7 @@
 // 2026-11-19：口语题库从绑定的本机 JSON 加载，按 Part、分类和关键词浏览。
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+// 2026-11-28：季度新题沿用原口语练习的空状态图标。
+import { MessagesSquare } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { mergeSpeakingTopics, parseSpeakingFile, speakingParts, speakingTopicId, speakingTopicMatches } from "../domain/speaking";
 import type { SpeakingPart, SpeakingTopic } from "../domain/speaking";
@@ -16,12 +18,15 @@ interface SpeakingFolder {
 }
 
 export const speakingCatalogKey = ["speaking-catalog"] as const;
+// 2026-11-28：新视图与原季度口语链接共用同一个地址。
+export const seasonalSpeakingPath = "/speaking?view=seasonal";
 
 // 2026-11-23：总览和口语题库共用已加载的话题。
-export function useSpeakingCatalog() {
+// 2026-11-28：季度新题视图只显示对应状态，进入历年真题时再扫描题库。
+export function useSpeakingCatalog(browsing = true) {
   const cache = useQueryClient();
   return useQuery({
-    queryKey: speakingCatalogKey, enabled: desktopAvailable(), retry: false,
+    queryKey: speakingCatalogKey, enabled: browsing && desktopAvailable(), retry: false,
     refetchInterval: folderRefreshInterval, refetchOnMount: "always", refetchOnWindowFocus: "always",
     queryFn: async () => {
       const folders = (await desktop.bankFolders()).filter((folder) => folder.kind === "speaking");
@@ -57,9 +62,22 @@ function speakingLink(part: SpeakingPart, category = "", query = "", topic = "")
 }
 
 export function SpeakingBank() {
-  const catalog = useSpeakingCatalog();
   const [search, setSearch] = useSearchParams();
+  // 2026-11-28：以查询参数区分季度新题，原有 Part 和话题链接继续进入历年真题。
+  const seasonal = search.get("view") === "seasonal";
+  const catalog = useSpeakingCatalog(!seasonal);
   const part = speakingParts.find((item) => String(item) === search.get("part")) ?? 1;
+  const views = <nav className="study-view-tabs speaking-view-tabs" aria-label="口语题库视图">
+    <span className="speaking-view-label">历年真题：</span>
+    {speakingParts.map((item) => <Link key={item} to={speakingLink(item)}
+      aria-current={!seasonal && item === part ? "page" : undefined}>Part {item}</Link>)}
+    <Link className="speaking-seasonal-tab" to={seasonalSpeakingPath} aria-current={seasonal ? "page" : undefined}>季度新题</Link>
+  </nav>;
+  if (seasonal) return <>
+    {views}
+    <section className="card empty"><MessagesSquare size={24} aria-hidden="true" /><p>暂无季度口语练习题目。</p></section>
+  </>;
+
   const category = search.get("category") ?? "";
   const query = search.get("q") ?? "";
   const topicId = search.get("topic");
@@ -85,9 +103,7 @@ export function SpeakingBank() {
   }
 
   return <>
-    <nav className="study-view-tabs" aria-label="口语分篇">
-      {speakingParts.map((item) => <Link key={item} to={speakingLink(item)} aria-current={item === part ? "page" : undefined}>Part {item}</Link>)}
-    </nav>
+    {views}
     <div className="filter-bar">
       <label className="search-field"><input type="search" aria-label="搜索口语话题" placeholder="搜索话题、题卡或问题" value={query}
         onChange={(event) => filter("q", event.currentTarget.value)} /></label>

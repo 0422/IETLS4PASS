@@ -2,7 +2,7 @@
 use rusqlite::TransactionBehavior;
 // 2026-11-21：录音独立存档，试听时通过二进制 IPC 返回原始 WAV。
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use rusqlite::Connection;
+use rusqlite::{params, Connection};
 use serde_json::{json, Value};
 use tauri::{ipc::Response, State};
 
@@ -58,6 +58,25 @@ pub(super) fn valid_session(value: &Value) -> bool {
                 && (item["audioId"].is_null() || (item["role"].as_str() == Some("user") && item["input"].as_str() == Some("voice")
                     && item["audioId"].as_str().is_some_and(|id| key(id).is_ok())))
         }))
+}
+
+// 2026-11-27：在练习记录的批量删除事务中清理已结束会话及其录音。
+pub(super) fn delete_finished_session(connection: &Connection, id: &str) -> CommandResult<()> {
+    key(id)?;
+    let Some(session) = document(connection, COLLECTION, id)? else { return Ok(()); };
+    if session["phase"].as_str() != Some("finished") {
+        return Err("只能从练习记录删除已结束的口语会话。".into());
+    }
+    if let Some(messages) = session["messages"].as_array() {
+        for audio_id in messages.iter().filter_map(|item| item["audioId"].as_str()) {
+            connection.execute(
+                "DELETE FROM workspace_documents WHERE collection = ?1 AND id = ?2 AND json_extract(document_json, '$.sessionId') = ?3",
+                params![AUDIO_COLLECTION, audio_id, id],
+            ).map_err(message)?;
+        }
+    }
+    connection.execute("DELETE FROM workspace_documents WHERE collection = ?1 AND id = ?2", params![COLLECTION, id]).map_err(message)?;
+    Ok(())
 }
 
 #[tauri::command]

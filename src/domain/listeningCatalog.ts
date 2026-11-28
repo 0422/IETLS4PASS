@@ -1,6 +1,6 @@
 // 2026-11-20：保留参考目录的场景、书号及组内顺序，并用本地题源补齐可练习入口。
 import type { ListeningRow, ListeningScene } from "./listening";
-// 2026-11-20：按顺序列出四套题，并为一节的录音与题面保留各自可用的入口。
+// 2026-11-20：按册列出四个 Test，并为每个 Section 的录音与题面保留各自的入口。
 import { canListenToRow } from "./listening";
 
 type CatalogSection = readonly [book: number, test: number, part: number];

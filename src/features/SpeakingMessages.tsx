@@ -19,7 +19,8 @@ interface Props {
   canPlay: boolean;
   playingQuestion?: number;
   playingAudio?: string;
-  onQuestion: (text: string, index: number) => void;
+  // 2026-11-27：练习记录回看显示考官文字，可只播放已保存的录音。
+  onQuestion?: (text: string, index: number) => void;
   onAudio: (id: string) => void;
 }
 
@@ -70,7 +71,7 @@ export function SpeakingMessages({ messages, finished, hasVoice, canPlay, playin
           aria-label={isPlaying ? "停止播放" : examiner ? "播放考官问题" : "播放我的录音"}
           aria-haspopup={examiner ? "menu" : undefined}
           title={examiner ? "点击播放，右键可显示或隐藏文本" : "点击播放原录音"}
-          onClick={() => examiner ? onQuestion(item.content, index) : item.audioId && onAudio(item.audioId)}
+          onClick={() => examiner ? onQuestion?.(item.content, index) : item.audioId && onAudio(item.audioId)}
           onContextMenu={examiner ? (event) => {
             event.preventDefault();
             openMenu(index, event.currentTarget, event.clientX, event.clientY);

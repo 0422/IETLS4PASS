@@ -17,40 +17,38 @@ function iso(value: unknown) {
   return Number.isFinite(date.valueOf()) ? date.toISOString() : "";
 }
 
-function legacyKind(raw: Record<string, unknown>, metadata: Record<string, unknown>, real: Record<string, unknown>, children: unknown[]) {
-  const type = [raw.type, raw.examType, metadata.type, metadata.examType, real.type, real.examType, real.pageType]
+function legacyKind(raw: Record<string, unknown>, metadata: Record<string, unknown>, real: Record<string, unknown>) {
+  const type = [raw.type, raw.examType, raw.kind, metadata.type, metadata.examType, real.type, real.examType, real.pageType]
     .map(string).join(" ").toLowerCase();
-  if (/suite|套题/.test(type) || children.length) return "suite";
+  // 2026-11-28：仅排除旧组合成绩，单篇记录保留原有识别口径。
+  if (/suite|套题/.test(type) || [raw, metadata, real].some((item) => item.suiteId != null || item.suitePosition != null) || [
+    raw.suiteEntries, raw.children, raw.suiteRecords, raw.subRecords, raw.suiteResults,
+    raw.suiteEntrySummaries, real.suiteResults, real.subRecords,
+  ].some((value) => Array.isArray(value) && value.length > 0)) return null;
   if (/listen|听力/.test(type)) return "listening";
   if (/read|阅读/.test(type) || /^p[123]-/.test(string(raw.examId))) return "reading";
   return null;
 }
 
-// 2026-11-19：沿用 suiteEntries 和 readingAnalytics 内实际保存的成绩证据。
-// 2026-11-19：套题子项保留自己的记录 ID，缺失时使用原套题 ID 与顺序。
-function normalize(rawValue: unknown, parent?: {
-  kind: "reading" | "listening"; submittedAt: string; sourceId: string; index: number; bankId?: string;
-}): PracticeRecord | null {
+// 2026-11-28：转换已有标识的正式单篇成绩，沿用原记录的得分证据。
+function normalize(rawValue: unknown): PracticeRecord | null {
   const raw = object(rawValue);
   const real = object(raw.realData);
   const metadata = object(raw.metadata);
   const source = [raw.dataSource, metadata.dataSource, metadata.source, raw.status, real.status].map(string).join(" ");
   if (/demo|sample|preview|draft|interrupted|cancel[l]?ed|synthetic/i.test(source)) return null;
-  const sourceId = [raw.id, raw.recordId, raw.sessionId].map(string).find(Boolean)
-    || (parent && `${parent.sourceId}:child:${parent.index}`);
+  const sourceId = [raw.id, raw.recordId, raw.sessionId].map(string).find(Boolean);
   if (!sourceId || new TextEncoder().encode(sourceId).length > 233 || /[\x00-\x1f\x7f-\x9f]/.test(sourceId)) return null;
   const id = `legacy:${sourceId}`;
-  const childrenInput = [raw.suiteEntries, raw.children, raw.suiteRecords, raw.subRecords, raw.suiteResults, raw.suiteEntrySummaries, real.suiteResults, real.subRecords]
-    .map(array).find((value) => value.length) ?? [];
-  const kind = legacyKind(raw, metadata, real, childrenInput) ?? parent?.kind;
-  if (!kind || (parent && kind === "suite")) return null;
+  const kind = legacyKind(raw, metadata, real);
+  if (!kind) return null;
   const examId = string(raw.examId) || string(real.examId) || string(metadata.examId);
   const bank = Object.hasOwn(raw, "libraryConfigurationId") ? raw.libraryConfigurationId : metadata.libraryConfigurationId;
-  const bankId = legacyBank(bank) ?? parent?.bankId;
+  const bankId = legacyBank(bank);
   const evidence = object(raw.readingAnalytics);
   const browse = object(raw.browseScore);
   const submittedAt = [evidence.submittedAt, browse.submittedAt, raw.submittedAt, raw.endTime, real.endTime, raw.completedAt, raw.date, raw.timestamp, raw.createdAt]
-    .map(iso).find(Boolean) || parent?.submittedAt || "";
+    .map(iso).find(Boolean) || "";
   const score = { ...object(real.scoreInfo), ...object(raw.scoreInfo) };
   const earned = numeric(evidence.earned) ?? numeric(browse.earned) ?? numeric(raw.correctAnswers) ?? numeric(score.correct) ?? numeric(score.correctAnswers);
   const total = numeric(evidence.possible) ?? numeric(browse.possible) ?? numeric(score.total) ?? numeric(score.totalQuestions) ?? numeric(raw.totalQuestions);
@@ -71,15 +69,12 @@ function normalize(rawValue: unknown, parent?: {
       type: string(row.questionType) || "other", points, possible,
     }];
   });
-  const childKind = [raw.type, raw.examType, metadata.type].map(string).some((value) => /listen|听力/i.test(value)) ? "listening" : "reading";
-  const nested = parent ? [] : childrenInput.map((item, index) => normalize(item, { kind: childKind, submittedAt, sourceId, index, bankId })).filter((item) => item !== null);
-  const children = [...new Map(nested.map((child) => [child.id, child])).values()];
   const storedAnswers = legacyAnswers(raw.answers ?? real.answers ?? raw.answerMap);
   return {
-    id, kind, title: string(raw.title) || string(raw.examTitle) || string(metadata.examTitle) || examId || (kind === "suite" ? "上游套题" : "上游练习"),
+    id, kind, title: string(raw.title) || string(raw.examTitle) || string(metadata.examTitle) || examId || "上游练习",
     examId: examId || undefined, bankId, category: string(evidence.category) || string(raw.category) || string(metadata.category), submittedAt,
     startedAt: iso(raw.startTime) || undefined, elapsedMs: duration !== null && duration >= 0 ? Math.round(duration * 1000) : undefined,
-    points: scored ? earned : null, possible: scored ? total : null, details, children: children.length ? children : undefined,
+    points: scored ? earned : null, possible: scored ? total : null, details,
     answers: Object.keys(storedAnswers).length ? storedAnswers : undefined,
     annotations: kind === "reading" ? legacyAnnotations({ ...real, ...raw }) : undefined,
     readingTiming: kind === "reading" && bankId ? legacyTiming(raw.readingTiming ?? real.readingTiming, id, examId, bankId) : undefined,
@@ -152,19 +147,10 @@ export function legacyPracticeRecords(value: unknown, allowEmpty = false) {
     }));
     const details = layer(source.practiceDetails);
     const annotations = layer(source.practiceAnnotations);
-    // 2026-11-19：按原版的三层关联规则补入套题子项批注。
-    candidates = [...layer(source.practiceSummaries)].map(([id, summary]) => {
-      const { suiteEntries: childAnnotations, ...notes } = annotations.get(id) ?? {};
-      const record: Record<string, unknown> = { ...summary, ...details.get(id), ...notes, id };
-      if (Array.isArray(record.suiteEntries)) {
-        record.suiteEntries = record.suiteEntries.map((item) => {
-          const child = object(item);
-          const key = string(child.examId) || string(object(child.metadata).examId) || string(child.id);
-          return { ...child, ...object(object(childAnnotations)[key]) };
-        });
-      }
-      return record;
-    });
+    // 2026-11-28：按记录 ID 合并原版单篇的摘要、答案和批注。
+    candidates = [...layer(source.practiceSummaries)].map(([id, summary]) => ({
+      ...summary, ...details.get(id), ...annotations.get(id), id,
+    }));
   } else {
     candidates = Array.isArray(value) ? value : [
       root.practice_records, root.practiceRecords, root.records,

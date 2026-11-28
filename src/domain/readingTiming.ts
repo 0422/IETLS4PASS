@@ -52,8 +52,7 @@ export function initializeReadingTiming(exam: ReadingExam, draft: PracticeDraft,
   const units = timingUnits(exam, missing);
   const known = new Set(units.filter((unit) => unit.durationMs !== null).map((unit) => unit.id));
   const previous = readTiming(draft.readingTiming);
-  if (previous && previous.attemptId === draft.id && previous.examId === draft.examId && previous.bankId === draft.bankId
-    && previous.suiteId === draft.suiteId && previous.suitePosition === draft.suitePosition) {
+  if (previous && previous.attemptId === draft.id && previous.examId === draft.examId && previous.bankId === draft.bankId) {
     const matching = units.length === previous.units.length && previous.units.every((old) => known.has(old.id) || old.durationMs === null);
     const reasons = new Set(previous.reasons);
     if (recovered) reasons.add("recovery-tail");
@@ -65,7 +64,7 @@ export function initializeReadingTiming(exam: ReadingExam, draft: PracticeDraft,
   if (units.some((unit) => unit.durationMs === null)) reasons.push("missing-mapping");
   const timing: ReadingTiming = {
     version: 1, kind: "foreground-selection", attemptId: draft.id, examId: exam.examId, bankId: draft.bankId,
-    suiteId: draft.suiteId, suitePosition: draft.suitePosition, units,
+    units,
     unallocatedMs: 0, totalMs: 0, reasons,
   };
   return { timing, known };

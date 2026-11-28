@@ -1,23 +1,17 @@
 // 2026-11-23：学习活动支持日历热力图、四科提交筛选与历史区段展开。
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronDown } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from "react";
-import { activityBlocks, activityBounds, activityShortcuts, addLocalDays, startOfLocalWeek } from "../domain/learningActivity";
+import { activityBlocks, activityBounds, activityShortcuts, addLocalDays } from "../domain/learningActivity";
 import type { ActivityBlock, ActivityRange } from "../domain/learningActivity";
 import { dayKey } from "../domain/records";
+// 2026-11-27：月历外观和交互由学习活动和考试计划共用。
+import { calendarWeekdays, MonthCalendar, startOfLocalMonth } from "./MonthCalendar";
 
 const dateLabel = new Intl.DateTimeFormat("zh-CN", { dateStyle: "long" });
-const weekdays = ["一", "二", "三", "四", "五", "六", "日"];
 const heatLevels = ["0 次", "1 次", "2 次", "3 次", "4 次及以上"];
 
 function localTime(date: Date) {
   return [date.getHours(), date.getMinutes()].map((value) => String(value).padStart(2, "0")).join(":");
-}
-
-function monthStart(value: Date) {
-  const date = new Date(value);
-  date.setDate(1);
-  date.setHours(0, 0, 0, 0);
-  return date;
 }
 
 type RangeDraft = {
@@ -45,17 +39,15 @@ function ActivityRangePicker({ range, now, earliest, onApply, onCancel }: {
 }) {
   const [draft, setDraft] = useState(() => rangeDraft(range, now, earliest));
   const [active, setActive] = useState<"start" | "end">("start");
-  const [month, setMonth] = useState(() => monthStart(activityBounds(range, now, earliest).start));
+  const [month, setMonth] = useState(() => startOfLocalMonth(activityBounds(range, now, earliest).start));
   const [error, setError] = useState("");
   const endDate = draft.followNow ? dayKey(now) : draft.endDate;
   const endTime = draft.followNow ? localTime(now) : draft.endTime;
   const selected = active === "start" ? draft.startDate : endDate;
-  const gridStart = startOfLocalWeek(month);
-  const monthLabel = `${month.getFullYear()}年${month.getMonth() + 1}月`;
 
   function showMonth(value: string) {
     const date = new Date(`${value}T00:00`);
-    if (Number.isFinite(date.valueOf())) setMonth(monthStart(date));
+    if (Number.isFinite(date.valueOf())) setMonth(startOfLocalMonth(date));
   }
 
   function focusBoundary(boundary: "start" | "end") {
@@ -68,12 +60,6 @@ function ActivityRangePicker({ range, now, earliest, onApply, onCancel }: {
     setDraft((previous) => ({ ...previous, kind: "custom", [field]: value }));
     setError("");
     if (field === "startDate" || field === "endDate") showMonth(value);
-  }
-
-  function moveMonth(offset: number) {
-    const next = new Date(month);
-    next.setMonth(next.getMonth() + offset);
-    setMonth(next);
   }
 
   function apply(event: FormEvent<HTMLFormElement>) {
@@ -131,23 +117,10 @@ function ActivityRangePicker({ range, now, earliest, onApply, onCancel }: {
           setError("");
         }} />结束时间跟随当前时刻</label>
       </div>
-      <div className="activity-picker-calendar" role="group" aria-label={`选择${active === "start" ? "开始" : "结束"}日期`}>
-        <div className="activity-picker-month">
-          <button type="button" aria-label="上个月" onClick={() => moveMonth(-1)}><ChevronLeft size={16} aria-hidden="true" /></button>
-          <b aria-live="polite">{monthLabel}</b>
-          <button type="button" aria-label="下个月" onClick={() => moveMonth(1)}><ChevronRight size={16} aria-hidden="true" /></button>
-        </div>
-        <div className="activity-picker-days">
-          {weekdays.map((day) => <span key={day} aria-hidden="true">{day}</span>)}
-          {Array.from({ length: 42 }, (_, index) => {
-            const date = addLocalDays(gridStart, index);
-            const key = dayKey(date);
-            return <button key={key} type="button" aria-label={dateLabel.format(date)} aria-pressed={key === selected}
-              data-outside-month={date.getMonth() !== month.getMonth()} data-in-range={key >= draft.startDate && key <= endDate}
-              onClick={() => setField(active === "start" ? "startDate" : "endDate", key)}>{date.getDate()}</button>;
-          })}
-        </div>
-      </div>
+      {/* 2026-11-27：共用月历，保留学习活动的日期区间着色和起止日期切换。 */}
+      <MonthCalendar month={month} selected={selected} label={`选择${active === "start" ? "开始" : "结束"}日期`}
+        range={{ start: draft.startDate, end: endDate }} onMonthChange={setMonth}
+        onSelect={(date) => setField(active === "start" ? "startDate" : "endDate", date)} />
     </div>
     {error && <p className="notice danger" role="alert">{error}</p>}
     <div className="activity-range-actions">
@@ -179,7 +152,7 @@ function ActivityCalendar({ block, counts }: { block: ActivityBlock; counts: Rea
     </div>
     <div className="activity-calendar-scroll">
       <div className="heatmap" role="group" aria-label="每天的提交次数" style={{ "--activity-weeks": weeks.length } as CSSProperties}>
-        {[0, 2, 4, 6].map((row) => <span key={row} className="activity-weekday" style={{ gridRow: row + 2, gridColumn: 1 }}>周{weekdays[row]}</span>)}
+        {[0, 2, 4, 6].map((row) => <span key={row} className="activity-weekday" style={{ gridRow: row + 2, gridColumn: 1 }}>周{calendarWeekdays[row]}</span>)}
         {weeks.map(({ days, month }, col) => <div className="activity-week" key={days[0].key}>
           {month && <span className="activity-month" style={{ gridColumn: col + 2, gridRow: 1 }}>{month.date.getMonth() + 1}月</span>}
           {days.map(({ key, visible, count }, row) => visible

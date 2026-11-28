@@ -6,6 +6,8 @@ src-tauri/target/
 src-tauri/gen/
 *.tsbuildinfo
 IELTS-practice-main/
+# 2026-11-28：本机 ACL 检查报告不进入代码仓库。
+/acl-report-*.jsonl
 
 # 2026-11-23：资料只在本机保存，用占位文件保留目录。
 /data/*

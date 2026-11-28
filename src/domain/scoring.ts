@@ -40,7 +40,8 @@ function tokens(answer: Answer | undefined): string[] {
   return [normalize(value)].filter(Boolean);
 }
 
-function compare(actual: Answer, expected: Answer) {
+// 2026-11-27：听力回看用相同的答案匹配规则给复选和成对填空上色。
+export function answersMatch(actual: Answer, expected: Answer) {
   const right = tokens(expected);
   let left = tokens(actual);
   if (right.length === 1 && /^[A-Z]$/.test(right[0]) && left.length === 1
@@ -100,7 +101,7 @@ export function scoreReading(exam: ReadingExam, answers: Answers): AnswerResult[
     const correctAnswer = exam.answerKey[questionId] ?? null;
     let userAnswer = answers[questionId] ?? null;
     let possible = 1;
-    let points = compare(userAnswer, correctAnswer) ? 1 : 0;
+    let points = answersMatch(userAnswer, correctAnswer) ? 1 : 0;
     // 2026-11-19：原版听力组合复选按整组集合完全匹配计分。
     if (group?.kind === "listening-set" && Array.isArray(correctAnswer)) {
       const actual = choiceTokens(userAnswer);

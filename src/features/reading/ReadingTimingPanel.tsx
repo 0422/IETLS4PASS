@@ -1,5 +1,4 @@
-// 2026-11-19：显示已保存的阅读计时、题组归属及套题测量覆盖情况。
-import { submissions } from "../../domain/records";
+// 2026-11-28：显示已保存的单篇阅读计时和题组归属。
 import { readTiming, timingDuration } from "../../domain/readingTiming";
 import type { PracticeRecord, TimingReason } from "../../domain/types";
 
@@ -12,20 +11,6 @@ const reasons: Record<TimingReason, string> = {
 
 export function ReadingTimingPanel({ record }: { record: PracticeRecord }) {
   if (record.kind === "listening") return null;
-  if (record.kind === "suite") {
-    const reading = submissions([record]).filter((child) => child.kind === "reading");
-    const measured = reading.flatMap((child) => {
-      const value = readTiming(child.readingTiming);
-      return value ? [value] : [];
-    });
-    return <section className="card reading-measurement">
-      <h2>套题关联前台时长</h2>
-      {measured.length ? <p>合计 {timingDuration(measured.reduce((sum, item) => sum + item.totalMs, 0))}
-        {" · "}未分配 {timingDuration(measured.reduce((sum, item) => sum + item.unallocatedMs, 0))}
-        {" · "}{measured.length} / {reading.length} 个已提交阅读子篇有测量{measured.some((value) => value.reasons.length) && " · 含部分计时"}</p>
-        : <p className="muted">不可用：无可靠计时数据。</p>}
-    </section>;
-  }
   const timing = readTiming(record.readingTiming);
   if (!timing || timing.attemptId !== record.id || timing.examId !== record.examId || timing.bankId !== record.bankId) {
     return <section className="card reading-measurement"><h2>题目／题组关联前台时长</h2><p className="muted">不可用：无可靠计时数据。</p></section>;

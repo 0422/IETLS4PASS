@@ -1,7 +1,8 @@
 // 2026-11-19：从正式记录生成成就，并把首次有效解锁时间保存到 SQLite。
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Award, LockKeyhole } from "lucide-react";
-import { useEffect, useMemo } from "react";
+// 2026-11-27：总览成就卡使用折叠箭头，并支持旧链接定位。
+import { Award, ChevronRight, LockKeyhole } from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { badges, projectAchievements } from "../domain/achievements";
 import type { Unlock } from "../domain/achievements";
 import { dateText } from "../domain/records";
@@ -29,17 +30,32 @@ export function AchievementProjection() {
   return null;
 }
 
-export function Achievements() {
+// 2026-11-27：成就独立页面改为总览底部的折叠区块。
+export function Achievements({ reveal }: { reveal: boolean }) {
   const saved = useUnlocks();
   const lookup = new Map((saved.data ?? []).map(({ id, value }) => [id, value]));
-  // 2026-11-23：学习成就作为独立视图，直接展示所有成就及解锁状态。
-  return <section className="card achievements" aria-label="学习成就">
-    <h2><Award size={19} aria-hidden="true" />已解锁 {saved.isLoading ? "—" : badges.filter(([id]) => lookup.has(id)).length} / {badges.length}</h2>
+  const details = useRef<HTMLDetailsElement>(null);
+  // 2026-11-27：通过旧链接进入时展开并滚动到成就卡，普通总览默认折叠。
+  useLayoutEffect(() => {
+    const disclosure = details.current;
+    if (!disclosure) return;
+    disclosure.open = reveal;
+    if (reveal) disclosure.scrollIntoView({ block: "start" });
+  }, [reveal]);
+
+  return <details className="card study-achievements" ref={details}>
+    {/* 2026-11-27：折叠时也显示已解锁数量。 */}
+    <summary>
+      <ChevronRight className="study-achievements-chevron" size={16} aria-hidden="true" />
+      <Award size={19} aria-hidden="true" />
+      <span>学习成就</span>
+      <small>已解锁 {saved.isLoading ? "—" : badges.filter(([id]) => lookup.has(id)).length} / {badges.length}</small>
+    </summary>
     {saved.error && <p className="notice danger" role="alert">{errorText(saved.error)}</p>}
     <div className="milestone-list">{badges.map(([id, title, info]) => <div key={id} className="milestone">
       <b>{title}</b><span>{info}</span>
       {lookup.has(id) ? <small>已解锁 · {dateText(lookup.get(id)?.unlockedAt ?? undefined)}</small>
         : <small><LockKeyhole size={12} />待解锁</small>}
     </div>)}</div>
-  </section>;
+  </details>;
 }

@@ -1,5 +1,5 @@
 // 2026-11-19：建立独立的桌面导航与功能路由，统一处理浏览器预览和页面错误。
-import { ArrowLeft, AudioLines, BookOpen, BookText, Bot, ChevronLeft, ClipboardCheck, Copy, FileCode2, FileText, FolderOpen, Globe, Headphones, LayoutDashboard, MessagesSquare, Mic, Minus, Monitor, NotebookPen, Settings2, Square, Target, X } from "lucide-react";
+import { ArrowLeft, AudioLines, BookOpen, BookText, Bot, CalendarDays, ChevronLeft, ClipboardCheck, Copy, FileCode2, FileText, FolderOpen, Globe, Headphones, LayoutDashboard, Mic, Minus, Monitor, NotebookPen, Settings2, Square, Target, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 // 2026-11-19：收集页面边界和桌面窗口的异常状态。
 // 2026-11-19：在应用层维护侧栏展开状态。
@@ -12,23 +12,25 @@ import type { ReactNode } from "react";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Library } from "../features/Library";
 import { Listening } from "../features/Listening";
-import { Records, RecordDetail } from "../features/Records";
-import { Recovery } from "../features/Recovery";
+// 2026-11-27：总览练习记录可直接打开口语和写作回看。
+import { Records, RecordDetail, SpeakingRecordDetail, WritingRecordDetail } from "../features/Records";
 // 2026-11-21：设置子页分别加载系统、日志与 AI 模型。
 import { LogSettings, SystemSettings, ThemeEffect } from "../features/Settings";
+// 2026-11-27：窗口顶栏使用本机考试日期展示倒计时。
+import { ExamCountdown } from "../features/ExamPlanSettings";
 import { AiModelSettings } from "../features/AiModelSettings";
-import { SpeakingBank } from "../features/SpeakingBank";
+import { SpeakingBank, seasonalSpeakingPath } from "../features/SpeakingBank";
 // 2026-11-20：写作练习进入可切换作文类型的页面。
 import { WritingPractice } from "../features/WritingPractice";
-// 2026-11-23：总览与学习成就入口使用独立视图。
+// 2026-11-27：总览与练习记录共用视图导航。
 import { Overview, StudyViews } from "../features/StudyOverview";
 import { Vocabulary } from "../features/Vocabulary";
 // 2026-11-21：课程笔记在学习工具分组中提供独立页面。
 import { CourseNotes } from "../features/CourseNotes";
-// 2026-11-22：Prompt 文档在学习工具中单独管理。
+// 2026-11-28：Prompt 文档作为设置子页单独管理。
 import { PromptDocuments } from "../features/PromptDocuments";
 // 2026-11-19：正式成绩刷新后维护成就解锁进度。
-import { AchievementProjection, Achievements } from "../features/Achievements";
+import { AchievementProjection } from "../features/Achievements";
 import { ReadingPractice } from "../features/reading/ReadingPractice";
 import { desktopAvailable } from "../services/desktop";
 import { diagnosticReport, reportDiagnostic } from "../services/diagnostics";
@@ -36,34 +38,31 @@ import { diagnosticReport, reportDiagnostic } from "../services/diagnostics";
 import { vocabularyRemovals } from "../services/vocabularyRemovals";
 
 
-// 2026-11-23：侧栏按真题、季度新题和 AI 考官分组。
+// 2026-11-28：四科题库归入真题练习，AI 教师提供学习计划入口。
 const navigationGroups = [
-  { title: "真题", links: [
+  { title: "真题练习", links: [
     { path: "/listening", title: "听力题库", icon: Headphones },
+    { path: "/library", title: "阅读题库", icon: FolderOpen },
     { path: "/speaking", title: "口语题库", icon: Mic },
     { path: "/writing-practice", title: "写作题库", icon: NotebookPen },
   ] },
-  { title: "季度新题", links: [
-    { path: "/library", title: "阅读练习", icon: FolderOpen },
-    { path: "/speaking-practice", title: "口语练习", icon: MessagesSquare },
-  ] },
-  // 2026-11-23：在季度新题下方增加 AI 考官及两个独立模块入口。
-  { title: "AI考官", links: [
+  { title: "AI教师", links: [
     { path: "/ai-examiner/diagnosis", title: "学习诊断", icon: ClipboardCheck },
-    { path: "/ai-examiner/training", title: "针对训练", icon: Target },
+    { path: "/ai-examiner/training", title: "专项训练", icon: Target },
+    { path: "/ai-examiner/plan", title: "学习计划", icon: CalendarDays },
   ] },
 ];
 
-// 2026-11-20：参考 DellaCRM 在最底部的总览与设置行之上放置辅助入口。
-// 2026-11-21：风土人情和词汇基石并入同一底部工具组。
-const utilityLinks = [
-  { path: "/vocabulary", title: "词汇基石", icon: BookText },
-  // 2026-11-22：发音纠正和 Prompt 文档紧随词汇基石。
-  { path: "/pronunciation", title: "发音纠正", icon: AudioLines },
-  { path: "/prompts", title: "Prompt 文档", icon: FileCode2 },
-  // 2026-11-21：在风土人情上方进入课程笔记。
-  { path: "/course-notes", title: "课程笔记", icon: NotebookPen },
-  { path: "/culture", title: "风土人情", icon: Globe },
+// 2026-11-28：在总览和设置上方分别展示能力提升与学习资料。
+const utilityGroups = [
+  { title: "能力提升", links: [
+    { path: "/vocabulary", title: "词汇基石", icon: BookText },
+    { path: "/pronunciation", title: "发音纠正", icon: AudioLines },
+  ] },
+  { title: "学习资料", links: [
+    { path: "/course-notes", title: "课程笔记", icon: NotebookPen },
+    { path: "/culture", title: "风土人情", icon: Globe },
+  ] },
 ];
 
 const bottomLinks = [
@@ -77,6 +76,8 @@ const settingsLinks = [
   { path: "/settings/system", title: "系统", icon: Monitor },
   { path: "/settings/logs", title: "日志", icon: FileText },
   { path: "/settings/ai-models", title: "AI 模型", icon: Bot },
+  // 2026-11-28：在设置中直接打开已有的提示词编辑器。
+  { path: "/settings/prompts", title: "Prompt 文档", icon: FileCode2 },
 ];
 
 
@@ -88,6 +89,14 @@ function SidebarLink({ link, activePath, collapsed }: { link: (typeof bottomLink
     aria-current={active ? "page" : undefined} aria-label={collapsed ? title : undefined} title={collapsed ? title : undefined}>
     <Icon size={18} strokeWidth={1.75} aria-hidden="true" /><span className="nav-label">{title}</span>
   </Link>;
+}
+
+// 2026-11-28：主导航和底部工具组共用标题与折叠样式。
+function SidebarGroup({ group, activePath, collapsed }: { group: (typeof navigationGroups)[number]; activePath: string; collapsed: boolean }) {
+  return <nav className="sidebar-group" aria-label={group.title}>
+    <div className="sidebar-group-title" aria-hidden="true">{group.title}</div>
+    {group.links.map((link) => <SidebarLink key={link.path} link={link} activePath={activePath} collapsed={collapsed} />)}
+  </nav>;
 }
 
 // 2026-11-19：按本机偏好恢复侧栏宽度，存储不可用时仍能在本次会话操作。
@@ -166,6 +175,8 @@ function WindowControls() {
 
   return <div className="window-titlebar">
     <div className="window-drag-region" data-tauri-drag-region aria-hidden="true" />
+    {/* 2026-11-27：倒计时与窗口按钮同排，文字居中。 */}
+    <ExamCountdown />
     <div className="window-controls" role="group" aria-label="窗口控制">
       <button type="button" title="最小化" aria-label="最小化" onClick={() => runWindowAction("minimize")}>
         <Minus size={15} aria-hidden="true" />
@@ -199,7 +210,8 @@ export function App() {
   const studyView = path === "/achievements" || path === "/statistics" || path === "/records" || path.startsWith("/records/");
   const activePath = reading ? "/library" : studyView ? "/" : path;
   // 2026-11-21：设置返回保留题目、筛选等 URL 参数。
-  const inSettings = path === "/settings" || path.startsWith("/settings/");
+  // 2026-11-28：旧 Prompt 链接跳转期间也沿用设置返回地址。
+  const inSettings = path === "/settings" || path.startsWith("/settings/") || path === "/prompts";
   const lastWorkspacePath = useRef("/");
   useEffect(() => {
     if (!inSettings) lastWorkspacePath.current = `${location.pathname}${location.search}${location.hash}`;
@@ -258,19 +270,16 @@ export function App() {
             {/* 2026-11-21：设置侧栏直接显示子页名称，隐藏重复的分组标题。 */}
             {settingsLinks.map((link) => <SidebarLink key={link.path} link={link} activePath={activePath} collapsed={collapsed} />)}
           </nav>
-        </> : navigationGroups.map(({ title, links }) => <nav key={title} className="sidebar-group" aria-label={title}>
-          <div className="sidebar-group-title" aria-hidden="true">{title}</div>
-          {links.map((link) => <SidebarLink key={link.path} link={link} activePath={activePath} collapsed={collapsed} />)}
-        </nav>)}
+        </> : navigationGroups.map((group) => <SidebarGroup key={group.title} group={group} activePath={activePath} collapsed={collapsed} />)}
       </div>
       {/* 2026-11-20：底部导航的名称与两个可见入口一致。 */}
       {/* 2026-11-20：底部区上方是词汇基石，下方并排放置总览和设置。 */}
       {/* 2026-11-21：工作区底部入口仅在主侧栏展示。 */}
       {!inSettings && <div className="sidebar-footer" id="sidebar-bottom">
-        {/* 2026-11-21：在总览和设置上方提供两项学习工具。 */}
-        <nav className="sidebar-utility" aria-label="学习工具">
-          {utilityLinks.map((link) => <SidebarLink key={link.path} link={link} activePath={activePath} collapsed={collapsed} />)}
-        </nav>
+        {/* 2026-11-28：底部工具分组随主侧栏一起折叠。 */}
+        <div className="sidebar-utility">
+          {utilityGroups.map((group) => <SidebarGroup key={group.title} group={group} activePath={activePath} collapsed={collapsed} />)}
+        </div>
         <nav className="sidebar-bottom" aria-label="总览与设置">
           {bottomLinks.map((link) => <SidebarLink key={link.path} link={link} activePath={activePath} collapsed={collapsed} />)}
         </nav>
@@ -289,14 +298,17 @@ export function App() {
       {/* 2026-11-19：正文按路径重新挂载时一并重置页面错误状态。 */}
       <PageBoundary>
         <Routes>
-          {/* 2026-11-19：三个学习视图共用切换栏，保留已有的记录和统计链接。 */}
+          {/* 2026-11-27：总览和练习记录共用切换栏，旧成就链接定位到总览。 */}
           <Route element={<StudyViews />}>
             <Route index element={<Overview />} />
             <Route path="records" element={<Records />} />
             <Route path="records/:id" element={<RecordDetail />} />
-            {/* 2026-11-23：旧阅读统计链接转到学习成就。 */}
-            <Route path="achievements" element={<Achievements />} />
-            <Route path="statistics" element={<Navigate to="/achievements" replace />} />
+            {/* 2026-11-27：独立定位同一话题的各场口语会话。 */}
+            <Route path="records/speaking/:id" element={<SpeakingRecordDetail />} />
+            {/* 2026-11-27：写作回看按提交标识打开当次正文。 */}
+            <Route path="records/writing/:id" element={<WritingRecordDetail />} />
+            <Route path="achievements" element={<Navigate to="/?section=achievements" replace />} />
+            <Route path="statistics" element={<Navigate to="/?section=achievements" replace />} />
           </Route>
           <Route path="library" element={<Library />} />
           <Route path="reading/:bankId/:examId" element={<ReadingPractice />} />
@@ -305,16 +317,17 @@ export function App() {
           <Route path="speaking" element={<SpeakingBank />} />
           {/* 2026-11-20：小作文和大作文通过写作练习页切换。 */}
           <Route path="writing-practice" element={<WritingPractice />} />
-          {/* 2026-11-21：季度口语练习和风土人情使用独立页面，显示当前暂无资料。 */}
-          <Route path="speaking-practice" element={<section className="card empty">
-            <MessagesSquare size={24} aria-hidden="true" /><p>暂无季度口语练习题目。</p>
-          </section>} />
-          {/* 2026-11-23：为 AI 考官的两个入口接通独立页面，后续接入诊断和训练内容。 */}
+          {/* 2026-11-28：原季度口语入口跳转到口语题库的季度新题视图。 */}
+          <Route path="speaking-practice" element={<Navigate to={seasonalSpeakingPath} replace />} />
+          {/* 2026-11-28：AI 教师提供独立的诊断、专项训练和学习计划页面。 */}
           <Route path="ai-examiner/diagnosis" element={<section className="card empty">
             <ClipboardCheck size={24} aria-hidden="true" /><p>暂无学习诊断。</p>
           </section>} />
           <Route path="ai-examiner/training" element={<section className="card empty">
-            <Target size={24} aria-hidden="true" /><p>暂无针对训练。</p>
+            <Target size={24} aria-hidden="true" /><p>暂无专项训练。</p>
+          </section>} />
+          <Route path="ai-examiner/plan" element={<section className="card empty">
+            <CalendarDays size={24} aria-hidden="true" /><p>暂无学习计划。</p>
           </section>} />
           <Route path="culture" element={<section className="card empty">
             <Globe size={24} aria-hidden="true" /><p>暂无风土人情资料。</p>
@@ -324,16 +337,17 @@ export function App() {
           <Route path="pronunciation" element={<section className="card empty">
             <AudioLines size={24} aria-hidden="true" /><p>暂无发音纠正练习。</p>
           </section>} />
-          <Route path="prompts" element={<PromptDocuments />} />
+          {/* 2026-11-28：兼容移动前的 Prompt 文档链接。 */}
+          <Route path="prompts" element={<Navigate to="/settings/prompts" replace />} />
           {/* 2026-11-21：课程笔记浏览与编辑 Markdown 文件。 */}
           <Route path="course-notes" element={<CourseNotes />} />
-          <Route path="drafts" element={<Recovery />} />
           {/* 2026-11-21：为设置分类提供独立地址，旧设置入口进入系统。 */}
           <Route path="settings">
             <Route index element={<Navigate to="system" replace />} />
             <Route path="system" element={<SystemSettings />} />
             <Route path="logs" element={<LogSettings />} />
             <Route path="ai-models" element={<AiModelSettings />} />
+            <Route path="prompts" element={<PromptDocuments />} />
           </Route>
           <Route path="*" element={<p className="notice">未找到这个页面。<Link to="/">返回总览</Link></p>} />
         </Routes>

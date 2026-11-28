@@ -15,11 +15,13 @@ import { reportDiagnostic } from "./diagnostics";
 
 // 2026-11-19：增加独立听力资料集合和本机诊断读取。
 // 2026-11-19：学习工具持久化阅读词汇和已解锁成就。
-export type Collection = "drafts" | "interrupted" | "vocabulary" | "settings" | "banks" | "suites" | "listening" | "annotations" | "review-plans"
+export type Collection = "drafts" | "vocabulary" | "settings" | "banks" | "listening" | "annotations" | "review-plans"
   // 2026-11-20：词表修改和删除记录独立保存，沿用工作区备份。
   // 2026-11-21：口语对话加入本机文档查询与备份。
   // 2026-11-21：备份包含单独的口语录音附件。
   | "reading-words" | "achievements" | "listening-drafts" | "vocabulary-edits" | "speaking-sessions" | "speaking-audio"
+  // 2026-11-27：听力回看批注和精听原文高亮也保存在本机。
+  | "listening-highlights"
   // 2026-11-23：作文正式提交作为本机文档保存和备份。
   | "writing-submissions";
 
@@ -38,8 +40,6 @@ export interface WriterRevision {
   writerId: string;
   revision: number;
 }
-
-// // 2026-11-19：整套提交携带各篇草稿快照与对应成绩。
 
 // 2026-11-19：读取用户通过桌面目录选择器绑定的题库。
 export interface BankFolder {
@@ -190,10 +190,10 @@ export const desktop = {
     call<{ draft: PracticeDraft; recovered: boolean }>("open_reading_draft", { id, writerId, seed }),
   saveReading: (id: string, writer: WriterRevision, draft: PracticeDraft) =>
     call<void>("save_reading_draft", { id, writer, draft }),
-  interruptReading: (id: string, writer: WriterRevision) =>
-    call<void>("interrupt_reading", { id, writer }),
   applyReviewFeedback: (change: ReviewPlanChange) => call<void>("apply_review_feedback", { change }),
-  deleteRecords: (ids: string[]) => call<void>("delete_records", { ids }),
+  // 2026-11-27：练习记录按原始来源批量删除所选记录。
+  deleteRecords: (ids: string[], speakingSessionIds: string[] = [], writingSubmissionIds: string[] = []) =>
+    call<void>("delete_records", { ids, speakingSessionIds, writingSubmissionIds }),
   documents: <T>(category: Collection) => call<Document<T>[]>("list_documents", { category }),
   put: <T>(category: Collection, id: string, value: T, unlessRecordId: string | null = null) =>
     call<void>("put_document", { document: { collection: category, id, value }, unlessRecordId }),
@@ -209,7 +209,6 @@ export const desktop = {
   readBackup: (id: number) => call<Backup>("read_workspace_backup", { id }),
   deleteBackup: (id: number) => call<void>("delete_workspace_backup", { id }),
   // 2026-11-19：统一暴露草稿归档和本机数据库管理命令。
-  archiveDraft: (id: string) => call<void>("archive_draft", { id }),
   info: () => call<WorkspaceInfo>("workspace_info"),
   reset: () => call<void>("reset_workspace"),
   // 2026-11-21：设置中保存、选择和删除文本模型连接。

@@ -27,7 +27,7 @@ const envelopeLayers = new Set([
 ]);
 const arrayLayers = new Set([
   "practice.reviewPlans", "library.configurations", "recovery.activeSessions", "recovery.drafts", "recovery.readingTiming",
-  "recovery.interrupted", "recovery.rejectedCompletions", "backups.entries", "backups.exportHistory", "backups.importHistory",
+  "recovery.rejectedCompletions", "backups.entries", "backups.exportHistory", "backups.importHistory",
   "vocab.words", "vocab.readingVocabWords", "vocab.readingBookshelfExams", "goals.items",
 ]);
 
@@ -75,7 +75,8 @@ function legacyEnvelopes(root: Dict) {
       throw new Error(`原版备份中有无效的数据层（${label}）。`);
     }
     checkPayload(row, label);
-    if (row.state === "present") {
+    // 2026-11-28：旧备份校验仍覆盖原件，中断归档不再转入工作区。
+    if (row.state === "present" && label !== "recovery.interrupted") {
       const valid = arrayLayers.has(label) ? Array.isArray(row.data) : label === "library.activeConfigurationId"
         ? row.data === null || typeof row.data === "string" : isObject(row.data);
       if (!valid) throw new Error(`原版备份的数据结构无效（${label}）。`);
@@ -100,23 +101,22 @@ function legacyEnvelopes(root: Dict) {
   return data;
 }
 
-function recoveryDraft(value: unknown, interrupted: boolean): PracticeDraft | undefined {
+// 2026-11-28：仅转换可以继续作答的单篇阅读草稿。
+function recoveryDraft(value: unknown): PracticeDraft | undefined {
   const item = object(value);
   const metadata = object(item.metadata);
-  const reading = interrupted ? item.type === "reading" || metadata.type === "reading" : item.kind === "reading_draft";
   const examId = str(item.examId).trim();
   const bankId = legacyBank(Object.hasOwn(item, "libraryConfigurationId") ? item.libraryConfigurationId : metadata.libraryConfigurationId);
-  const sourceId = str(interrupted ? item.id || item.sessionId : item.sessionId || item.id);
-  const id = `legacy-${interrupted ? "interrupted" : "draft"}:${sourceId}`;
+  const sourceId = str(item.sessionId || item.id);
+  const id = `legacy-draft:${sourceId}`;
   const updatedAt = iso(item.updatedAt) || iso(item.endTime) || iso(item.createdAt);
-  if (!reading || !examId || !bankId || !sourceId || !validId(id) || !updatedAt || !isObject(item.answers)) return undefined;
+  if (item.kind !== "reading_draft" || item.suiteId != null || item.suitePosition != null
+    || !examId || !bankId || !sourceId || !validId(id) || !updatedAt || !isObject(item.answers)) return undefined;
   const readingTiming = legacyTiming(item.readingTiming, id, examId, bankId, false);
   return {
     id, bankId, examId, updatedAt, startedAt: iso(item.startTime),
-    elapsedMs: readingTiming?.totalMs ?? (interrupted && count(item.duration) ? item.duration * 1000 : 0),
+    elapsedMs: readingTiming?.totalMs ?? 0,
     answers: legacyAnswers(item.answers), annotations: legacyAnnotations(item), readingTiming,
-    archivedAt: interrupted ? iso(item.endTime) || updatedAt : undefined,
-    interruptReason: interrupted ? str(item.reason) || "archived" : undefined,
   };
 }
 
@@ -130,20 +130,19 @@ function wordProgress(value: unknown): WordProgress | undefined {
 function legacyReview(value: unknown, records: Map<string, PracticeRecord>): ReviewPlan | undefined {
   const plan = object(value);
   const state = object(plan.reviewState);
-  const parent = records.get(`legacy:${str(plan.recordId)}`);
-  // 使用原子项位置保存的来源，兼容导出时只留有摘要的套题。
-  const child = count(plan.entryIndex) ? parent?.children?.[plan.entryIndex] : parent;
+  const record = records.get(`legacy:${str(plan.recordId)}`);
   const bankId = legacyBank(plan.libraryConfigurationId);
   const examId = str(plan.examId);
   const latestCompletedAt = iso(plan.latestCompletedAt);
   const progress = wordProgress(state);
   const { reviewCount, lapseCount, lastQuality } = state;
   if (plan.unit !== "article" || state.algorithm !== "sm2-practice" || state.algorithmVersion !== 1
-    || !bankId || !examId || !latestCompletedAt || !progress || !child || child.kind !== "reading" || child.examId !== examId
-    || (child.bankId !== undefined && child.bankId !== bankId) || !count(reviewCount) || !count(lapseCount)
+    || count(plan.entryIndex) || !bankId || !examId || !latestCompletedAt || !progress
+    || !record || record.kind !== "reading" || record.examId !== examId
+    || (record.bankId !== undefined && record.bankId !== bankId) || !count(reviewCount) || !count(lapseCount)
     || (lastQuality !== null && lastQuality !== "hard" && lastQuality !== "good" && lastQuality !== "easy")) return undefined;
   return {
-    ...progress, revision: 1, bankId, examId, latestCompletedAt, recordId: child.id, title: child.title,
+    ...progress, revision: 1, bankId, examId, latestCompletedAt, recordId: record.id, title: record.title,
     reviewCount, lapseCount, lastQuality, lastReviewAttemptId: str(state.lastReviewAttemptId),
     appliedReviewAttemptIds: array(state.appliedReviewAttemptIds).filter((id): id is string => typeof id === "string"),
   };
@@ -220,7 +219,7 @@ export function readBackupInput(value: unknown, aliases: Record<string, string> 
   }
   const recovered = new Map<string, PracticeDraft>();
   for (const item of array(data["recovery.drafts"])) {
-    const draft = recoveryDraft(item, false);
+    const draft = recoveryDraft(item);
     if (!draft || records.has(`legacy:${str(object(item).sessionId)}`)) continue;
     draft.examId = canonicalExam(draft.bankId, draft.examId, aliases);
     if (draft.readingTiming) draft.readingTiming.examId = draft.examId;
@@ -229,10 +228,6 @@ export function readBackupInput(value: unknown, aliases: Record<string, string> 
     if (!previous || draft.updatedAt > previous.updatedAt) recovered.set(key, draft);
   }
   for (const [key, draft] of recovered) add("drafts", key, draft);
-  for (const item of array(data["recovery.interrupted"])) {
-    const draft = recoveryDraft(item, true);
-    if (draft) add("interrupted", draft.id, draft);
-  }
   const unlocked = object(data["achievements.manual"]);
   for (const [id] of badges) {
     if (!Object.hasOwn(unlocked, id)) continue;
@@ -251,7 +246,7 @@ export function readBackupInput(value: unknown, aliases: Record<string, string> 
   function withCanonicalExam(record: PracticeRecord): PracticeRecord {
     const examId = record.kind === "reading" && record.examId ? canonicalExam(record.bankId, record.examId, aliases) : record.examId;
     return {
-      ...record, examId, children: record.children?.map(withCanonicalExam),
+      ...record, examId,
       readingTiming: record.readingTiming && examId ? { ...record.readingTiming, examId } : record.readingTiming,
     };
   }

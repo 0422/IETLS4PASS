@@ -7,9 +7,9 @@ import { BookOpen, Search } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 // 2026-11-19：题库显示按题目和来源保存的复习计划，以及有原始作答的回放入口。
-import { dateText, submissions, usableScore } from "../domain/records";
+import { dateText, usableScore } from "../domain/records";
 import { reviewPlanId, type ReviewPlan } from "../domain/readingReview";
-import type { PracticeDraft, SuiteDraft } from "../domain/types";
+import type { PracticeDraft } from "../domain/types";
 import { importedEntries, MAIN_BANK, readingRecordsFor, useBankIndex, useCustomBanks, useSelectedReadingBank } from "../services/banks";
 import { desktop, desktopAvailable, documentsKey, errorText, recordsKey } from "../services/desktop";
 // 2026-11-19：在阅读题库中更新已绑定的本机文件。
@@ -23,8 +23,6 @@ export function Library() {
   const records = useQuery({ queryKey: recordsKey, queryFn: desktop.records, enabled: desktopAvailable() });
   const drafts = useQuery({ queryKey: documentsKey("drafts"), queryFn: () => desktop.documents<PracticeDraft>("drafts"), enabled: desktopAvailable() });
   const plans = useQuery({ queryKey: documentsKey("review-plans"), queryFn: () => desktop.documents<ReviewPlan>("review-plans"), enabled: desktopAvailable() });
-  // 2026-11-20：只读出旧套题中已提交的子篇，给已有复习计划保留回放来源。
-  const suites = useQuery({ queryKey: documentsKey("suites"), queryFn: () => desktop.documents<SuiteDraft>("suites"), enabled: desktopAvailable() });
   const preference = useSelectedReadingBank();
   const bankId = preference.data && (preference.data === MAIN_BANK || banks.data?.some((bank) => bank.id === preference.data))
     ? preference.data : MAIN_BANK;
@@ -41,17 +39,13 @@ export function Library() {
   const scoreDialog = useRef<HTMLDialogElement>(null);
   const chosenBank = banks.data?.find((bank) => bank.id === bankId);
   const entries = bankId === MAIN_BANK ? index.data?.entries ?? [] : chosenBank ? importedEntries(chosenBank.value) : [];
-  const submitted = useMemo(() => submissions(records.data ?? []), [records.data]);
-  const attempted = useMemo(() => readingRecordsFor(bankId, submitted, index.data, banks.data ?? []),
-    [bankId, submitted, index.data, banks.data]);
+  const attempted = useMemo(() => readingRecordsFor(bankId, records.data ?? [], index.data, banks.data ?? []),
+    [bankId, records.data, index.data, banks.data]);
   const scoreHistory = scoreExam ? attempted.get(scoreExam.id) ?? [] : [];
-  const inProgress = new Set((drafts.data ?? []).filter((draft) => !draft.id.startsWith("suite:") && draft.value.bankId === bankId)
+  const inProgress = new Set((drafts.data ?? []).filter((draft) => draft.value.bankId === bankId)
     .map((draft) => draft.value.examId));
   const stateOf = (id: string) => inProgress.has(id) ? "draft" : attempted.has(id) ? "complete" : "new";
-  const replaySources = new Set([
-    ...submitted,
-    ...(suites.data ?? []).flatMap(({ value }) => value.completed),
-  ].map((record) => record.id));
+  const replaySources = new Set((records.data ?? []).map((record) => record.id));
   const review = new Map(plans.data?.filter(({ value }) => replaySources.has(value.recordId)).map(({ id, value }) => [id, value] as const));
   const dueTime = Date.now();
   const lookup = (examId: string) => review.get(reviewPlanId(bankId, examId));
@@ -61,7 +55,7 @@ export function Library() {
     && [entry.title, entry.examId, entry.frequency, entry.filename, entry.pdfFilename].some((value) => value?.toLowerCase().includes(search.trim().toLowerCase())));
   if (sort === "title") visible.sort((a, b) => a.title.localeCompare(b.title, "en"));
   if (sort === "difficulty") visible.sort((a, b) => (a.difficultyScore ?? Infinity) - (b.difficultyScore ?? Infinity));
-  const error = index.error || banks.error || records.error || drafts.error || plans.error || suites.error || preference.error || switchBank.error
+  const error = index.error || banks.error || records.error || drafts.error || plans.error || preference.error || switchBank.error
     || sync.error || sync.data?.[0];
 
   return <>

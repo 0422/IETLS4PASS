@@ -143,7 +143,7 @@ fn collection(value: &str) -> CommandResult<()> {
     match value {
         // 2026-11-19：将用户导入的听力题源保存到独立资料集合。
         // 2026-11-19：保存复盘批注和有版本控制的文章复习计划。
-        "drafts" | "interrupted" | "vocabulary" | "settings" | "banks" | "suites" | "listening"
+        "drafts" | "vocabulary" | "settings" | "banks" | "listening"
         // 2026-11-19：保存阅读生词和各项已解锁成就。
         // 2026-11-19：听力草稿独立于原有阅读恢复列表。
         // 2026-11-20：允许保存及恢复词表的本机编辑记录。
@@ -153,6 +153,8 @@ fn collection(value: &str) -> CommandResult<()> {
         | "vocabulary-edits" | "speaking-sessions" | speaking::AUDIO_COLLECTION => Ok(()),
         // 2026-11-23：允许作文通过本机工作区读写、备份和恢复。
         "writing-submissions" => Ok(()),
+        // 2026-11-27：保存听力回看批注和精听原文高亮。
+        "listening-highlights" => Ok(()),
         _ => Err("未知的数据分类".into()),
     }
 }
@@ -170,12 +172,38 @@ fn read_json(text: String) -> CommandResult<Value> {
     serde_json::from_str(&text).map_err(message)
 }
 
+// 2026-11-28：已停用的套题成绩和归档仅在旧数据读取边界识别，不进入当前工作区。
+fn retired_record(value: &Value) -> bool {
+    value["kind"] == "suite" || !value["suiteId"].is_null() || !value["suitePosition"].is_null()
+}
+
+fn retired_draft(id: &str, value: &Value) -> bool {
+    id.starts_with("suite:") || !value["suiteId"].is_null() || !value["suitePosition"].is_null()
+}
+
+fn retired_document(document: &Document) -> bool {
+    matches!(document.collection.as_str(), "suites" | "interrupted")
+        || (document.collection == "drafts" && retired_draft(&document.id, &document.value))
+        || (document.collection == "settings" && document.id == "legacy-import:recovery.interrupted")
+}
+
+// 2026-11-28：回放批注和复习计划通过原成绩 ID 关联单篇记录。
+fn reading_replay_source(document: &Document) -> Option<&str> {
+    match document.collection.as_str() {
+        "annotations" => Some(document.id.as_str()),
+        "review-plans" => document.value["recordId"].as_str(),
+        _ => None,
+    }
+}
+
 fn read_records(connection: &Connection) -> CommandResult<Vec<Value>> {
     let mut query = connection.prepare(
         "SELECT record_json FROM practice_records ORDER BY submitted_at DESC, id",
     ).map_err(message)?;
     let rows = query.query_map([], |row| row.get(0)).map_err(message)?;
-    rows.map(|row| read_json(row.map_err(message)?)).collect()
+    let mut records = rows.map(|row| read_json(row.map_err(message)?)).collect::<CommandResult<Vec<_>>>()?;
+    records.retain(|record| !retired_record(record));
+    Ok(records)
 }
 
 fn read_documents(connection: &Connection, category: Option<&str>) -> CommandResult<Vec<Document>> {
@@ -186,17 +214,25 @@ fn read_documents(connection: &Connection, category: Option<&str>) -> CommandRes
     let rows = query.query_map([category], |row| {
         Ok((row.get(0)?, row.get(1)?, row.get::<_, String>(2)?))
     }).map_err(message)?;
-    rows.map(|row| {
+    let mut documents = Vec::new();
+    for row in rows {
         let (collection, id, json) = row.map_err(message)?;
-        Ok(Document { collection, id, value: read_json(json)? })
-    }).collect()
+        let document = Document { collection, id, value: read_json(json)? };
+        if retired_document(&document) { continue; }
+        if let Some(source) = reading_replay_source(&document) {
+            if !reading::has_replay_source(connection, &Value::String(source.into()))? { continue; }
+        }
+        documents.push(document);
+    }
+    Ok(documents)
 }
 
 fn add_record(connection: &Connection, value: &Value) -> CommandResult<bool> {
     let id = value["id"].as_str().ok_or_else(|| "成绩缺少记录标识".to_string())?;
     key(id)?;
     let kind = value["kind"].as_str().unwrap_or_default();
-    if !matches!(kind, "reading" | "listening" | "suite") || !value["title"].is_string() {
+    if !matches!(kind, "reading" | "listening") || retired_record(value) || !value["title"].is_string()
+        || !value["children"].is_null() {
         return Err("成绩类型或标题无效".into());
     }
     let date = value["submittedAt"].as_str().unwrap_or_default();
@@ -258,16 +294,33 @@ pub fn save_record(
 }
 
 #[tauri::command]
-pub fn delete_records(db: State<'_, Database>, ids: Vec<String>) -> CommandResult<()> {
+// 2026-11-27：练习记录在同一事务中删除所选成绩、口语会话和正式作文。
+pub fn delete_records(
+    db: State<'_, Database>, ids: Vec<String>, speaking_session_ids: Option<Vec<String>>, writing_submission_ids: Option<Vec<String>>,
+) -> CommandResult<()> {
     let mut connection = db.lock()?;
     let transaction = connection.transaction().map_err(message)?;
     for id in ids {
         key(&id)?;
         // 2026-11-19：已删除作答的回放批注和失去来源的复习计划一并清理。
         if let Some(record) = reading::stored_record(&transaction, &Value::String(id.clone()))? {
-            reading::remove_replay_data(&transaction, &record)?;
+            reading::remove_replay_data(&transaction, &id)?;
+            // 2026-11-27：删除听力成绩时同步清理这次回看的批注。
+            if record["kind"] == "listening" {
+                transaction.execute(
+                    "DELETE FROM workspace_documents WHERE collection = 'listening-highlights' AND id = ?1",
+                    params![format!("question:{id}")],
+                ).map_err(message)?;
+            }
         }
         transaction.execute("DELETE FROM practice_records WHERE id = ?1", [&id]).map_err(message)?;
+    }
+    for id in speaking_session_ids.unwrap_or_default() {
+        speaking::delete_finished_session(&transaction, &id)?;
+    }
+    for id in writing_submission_ids.unwrap_or_default() {
+        key(&id)?;
+        transaction.execute("DELETE FROM workspace_documents WHERE collection = 'writing-submissions' AND id = ?1", [&id]).map_err(message)?;
     }
     transaction.commit().map_err(message)
 }
@@ -275,11 +328,11 @@ pub fn delete_records(db: State<'_, Database>, ids: Vec<String>) -> CommandResul
 #[tauri::command]
 pub fn list_documents(db: State<'_, Database>, category: String) -> CommandResult<Vec<Document>> {
     collection(&category)?;
-    // 2026-11-19：读取恢复数据前同步清理超过 30 天的记录和中断容量。
-    if matches!(category.as_str(), "drafts" | "interrupted") {
+    // 2026-11-28：读取续做列表前仅清理过期的单篇草稿。
+    if category == "drafts" {
         let mut connection = db.lock()?;
         let transaction = connection.transaction().map_err(message)?;
-        reading::prune_recovery(&transaction)?;
+        reading::prune_stale_drafts(&transaction)?;
         let documents = read_documents(&transaction, Some(&category))?;
         transaction.commit().map_err(message)?;
         return Ok(documents);
@@ -370,18 +423,6 @@ pub fn export_workspace(db: State<'_, Database>) -> CommandResult<WorkspaceBacku
     let backup = backup::snapshot(&transaction)?;
     transaction.commit().map_err(message)?;
     Ok(backup)
-}
-
-// 2026-11-19：归档中断草稿，公开 SQLite 完整性与数据计数，并支持本机重置。
-#[tauri::command]
-pub fn archive_draft(db: State<'_, Database>, id: String) -> CommandResult<()> {
-    key(&id)?;
-    let mut connection = db.lock()?;
-    let transaction = connection.transaction().map_err(message)?;
-    // 2026-11-19：归档会清理当前写者，阻止过期页面重新写入原草稿。
-    reading::archive_in_transaction(&transaction, &id, "archived")?;
-    reading::prune_recovery(&transaction)?;
-    transaction.commit().map_err(message)
 }
 
 #[tauri::command]

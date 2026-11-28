@@ -40,6 +40,11 @@ export interface SpeakingSession {
   examinerVoice?: ExaminerVoice;
 }
 
+// 2026-11-27：总览计数和练习记录采用相同的口语完成条件。
+export function isSubmittedSpeakingSession(session: SpeakingSession) {
+  return session.phase === "finished" && session.messages.some(({ role }) => role === "user");
+}
+
 export const speakingLimits = {
   1: { totalMs: 300_000, rounds: 4 },
   2: { totalMs: 240_000, rounds: 2 },

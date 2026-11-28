@@ -20,20 +20,23 @@ fn matching(current: &Value, expected: &DraftRevision) -> bool {
     current["id"].as_str() == Some(expected.id.as_str()) && current["revision"].as_u64() == Some(expected.revision)
 }
 
+// 2026-11-28：听力草稿和单独保存的高亮使用同一选区校验。
+pub(super) fn valid_highlights(value: &Value) -> bool {
+    value.as_array().is_some_and(|highlights| highlights.iter().all(|highlight| {
+        let range = highlight["start"].as_u64().zip(highlight["end"].as_u64());
+        highlight["blockId"].as_str().is_some_and(|id| !id.is_empty())
+            && range.is_some_and(|(start, end)| start < end)
+            && highlight["text"].as_str().is_some_and(|text| !text.is_empty())
+    }))
+}
+
 pub(super) fn valid_draft(value: &Value) -> bool {
     ["id", "examId", "bankId", "startedAt"].iter().all(|field| value[*field].as_str().is_some_and(|text| !text.is_empty()))
         && value["revision"].as_u64().is_some_and(|revision| revision > 0)
         && value["elapsedMs"].as_u64().is_some()
         && value["position"].as_f64().is_some_and(|position| position >= 0.0)
         // 2026-11-23：旧草稿可省略题面高亮，存在时校验标题块标识、选区和文字。
-        && value.get("questionHighlights").map_or(true, |highlights| {
-            highlights.as_array().is_some_and(|highlights| highlights.iter().all(|highlight| {
-                let range = highlight["start"].as_u64().zip(highlight["end"].as_u64());
-                highlight["blockId"].as_str().is_some_and(|id| !id.is_empty())
-                    && range.is_some_and(|(start, end)| start < end)
-                    && highlight["text"].as_str().is_some_and(|text| !text.is_empty())
-            }))
-        })
+        && value.get("questionHighlights").map_or(true, valid_highlights)
         && value["answers"].is_object()
 }
 

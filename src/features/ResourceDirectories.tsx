@@ -8,7 +8,8 @@ import { notifyKokoroDirectoryChanged } from "../services/resourceDirectories";
 
 const directoriesKey = ["resource-directories"] as const;
 const labels: Record<ResourceDirectoryKind, string> = {
-  reading: "阅读练习",
+  // 2026-11-28：资源目录名称与真题练习下的阅读题库一致。
+  reading: "阅读题库",
   listening: "听力真题",
   speaking: "口语真题",
   writing: "写作真题",

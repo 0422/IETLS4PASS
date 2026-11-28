@@ -1,12 +1,12 @@
-// 2026-11-19：从正式成绩或已提交的套题子篇回放作答，单独保存批注并提交复习反馈。
+// 2026-11-28：从正式的单篇成绩回放作答，保存批注和复习反馈。
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { dateText, submissions } from "../../domain/records";
+import { dateText } from "../../domain/records";
 import { planForFeedback, reviewPlanId } from "../../domain/readingReview";
 import type { ReviewPlan, ReviewQuality } from "../../domain/readingReview";
 import { scoreReading } from "../../domain/scoring";
-import type { PracticeRecord, ReadingAnnotations, ReadingAsset, SuiteDraft } from "../../domain/types";
+import type { PracticeRecord, ReadingAnnotations, ReadingAsset } from "../../domain/types";
 import { MAIN_BANK, mainMedia } from "../../services/banks";
 import { desktop, desktopAvailable, documentsKey, errorText, recordsKey } from "../../services/desktop";
 import { AnswerReview } from "./AnswerReview";
@@ -18,25 +18,23 @@ import { selectedHighlight } from "./passageHighlights";
 import { showReadingLocation } from "./readingHtml";
 
 // 2026-11-19：目录题库回放使用原目录题图。
-// 2026-11-20：旧套题成绩作为单篇只读回放，复用原记录和批注。
 export function ReadingReplay({ asset, bankId, recordId, media }: {
   asset: ReadingAsset; bankId: string; recordId?: string; media?: (key: string) => string | undefined;
 }) {
   const enabled = desktopAvailable() && Boolean(recordId);
   const records = useQuery({ queryKey: recordsKey, queryFn: desktop.records, enabled });
-  // 2026-11-20：从旧套题文档中只读取已提交的子篇，兼容未导入正式历史的回放链接。
-  const suites = useQuery({ queryKey: documentsKey("suites"), queryFn: () => desktop.documents<SuiteDraft>("suites"), enabled });
   const plans = useQuery({ queryKey: documentsKey("review-plans"), queryFn: () => desktop.documents<ReviewPlan>("review-plans"), enabled });
   const notes = useQuery({ queryKey: documentsKey("annotations"), queryFn: () => desktop.documents<ReadingAnnotations>("annotations"), enabled });
-  const history = [...submissions(records.data ?? []), ...(suites.data ?? []).flatMap(({ value }) => value.completed)];
-  const record = history.find((item) => item.id === recordId && item.examId === asset.exam.examId && item.bankId === bankId);
+  const record = records.data?.find((item) =>
+    item.kind === "reading" && item.id === recordId && item.examId === asset.exam.examId && item.bankId === bankId);
   const plan = plans.data?.find(({ id }) => id === reviewPlanId(bankId, asset.exam.examId))?.value;
   const initial = notes.data?.find(({ id }) => id === recordId)?.value ?? record?.annotations ?? emptyAnnotations;
-  const error = records.error || suites.error || plans.error || notes.error;
+  const error = records.error || plans.error || notes.error;
   if (recordId && error) return <p className="notice danger" role="alert">{errorText(error)}</p>;
-  if (recordId && (records.isLoading || suites.isLoading || plans.isLoading || notes.isLoading)) return <p className="muted">正在读取回放…</p>;
+  if (recordId && (records.isLoading || plans.isLoading || notes.isLoading)) return <p className="muted">正在读取回放…</p>;
   // 2026-11-21：失效回放的返回入口使用新模块名。
-  if (recordId && !record) return <p className="notice">此回放记录已失效或来源与题目不一致。<Link to="/library">返回阅读练习</Link></p>;
+  // 2026-11-28：回放和异常入口统一返回阅读题库。
+  if (recordId && !record) return <p className="notice">此回放记录已失效或来源与题目不一致。<Link to="/library">返回阅读题库</Link></p>;
   return <ReadOnlyPaper asset={asset} bankId={bankId} record={record} initial={initial}
     plan={plan?.recordId === record?.id ? plan : undefined} mediaUrl={media} />;
 }
@@ -81,8 +79,7 @@ function ReadOnlyPaper({ asset, bankId, record, initial, plan, mediaUrl }: {
   }
 
   return <section className="practice" ref={root}>
-    {/* 2026-11-21：从阅读回放返回阅读练习列表。 */}
-    <div className="page-heading"><div><Link className="back-link" to="/library">返回阅读练习</Link>
+    <div className="page-heading"><div><Link className="back-link" to="/library">返回阅读题库</Link>
       <h1>{exam.meta.title}</h1><p>{record ? `作答回放 · ${dateText(record.submittedAt)}` : "背题与解析"}</p>
     </div></div>
     {(error || feedback.error || saveNotes.error) && <p className="notice danger" role="alert">{error || errorText(feedback.error || saveNotes.error)}</p>}

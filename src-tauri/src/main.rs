@@ -91,7 +91,6 @@ fn main() {
             store::export_workspace,
             // 2026-11-23：恢复统一使用后面的预览和确认接口。
             // 2026-11-19：提供恢复管理、数据检查与明确确认后的本机重置。
-            store::archive_draft,
             store::workspace_info,
             store::reset_workspace,
             // 2026-11-21：设置页管理本机模型连接，密钥仅通过保存命令写入。
@@ -111,7 +110,6 @@ fn main() {
             // 2026-11-23：注册单篇阅读恢复、中断和复习反馈命令。
             store::reading::open_reading_draft,
             store::reading::save_reading_draft,
-            store::reading::interrupt_reading,
             store::reading::apply_review_feedback,
             // 2026-11-19：读取用户选定的题库及其本地资产。
             store::bank::list_bank_folders,

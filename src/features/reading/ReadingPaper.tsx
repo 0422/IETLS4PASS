@@ -9,6 +9,8 @@ import { paintHighlights } from "./passageHighlights";
 const optionSelector = ".drag-item, .draggable-word, .card[draggable]";
 const dropSelector = ".paragraph-dropzone, .match-dropzone, .drop-target-summary, .dropzone";
 type Field = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+// 2026-11-27：听力交卷后可给实际填写的答案和选中的选项着色。
+export type AnswerFeedback = (ids: string[], value: string, checkbox?: boolean) => "correct" | "incorrect" | undefined;
 
 interface Props {
   exam: ReadingExam;
@@ -19,11 +21,13 @@ interface Props {
   onCoverage: (missing: string[], timingMissing: string[]) => void;
   onSelection?: (ids: string[]) => void;
   highlights?: PassageHighlight[];
+  // 2026-11-27：题面根据调用方提供的已保存判分展示颜色。
+  answerFeedback?: AnswerFeedback;
 }
 
 const selection = (answer: Answer | undefined) => Array.isArray(answer) ? answer : answer ? [answer] : [];
 
-export function ReadingPaper({ exam, answers, disabled, mediaUrl, onChange, onCoverage, onSelection, highlights }: Props) {
+export function ReadingPaper({ exam, answers, disabled, mediaUrl, onChange, onCoverage, onSelection, highlights, answerFeedback }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const passage = useRef<HTMLDivElement>(null);
   const groups = useRef<HTMLDivElement>(null);
@@ -198,13 +202,32 @@ export function ReadingPaper({ exam, answers, disabled, mediaUrl, onChange, onCo
     const fields = root.current?.querySelectorAll<Field>("[data-answer-ids]");
     if (!fields) return;
     const usedByGroup = new Map<string, Set<string>>();
+    // 2026-11-27：分开排版的选项标签也跟随对应控件着色。
+    const feedbackLabels = new Set<HTMLLabelElement>();
     for (const field of fields) {
-      const id = field.dataset.answerIds?.split(" ")[0] ?? "";
+      const ids = field.dataset.answerIds?.split(" ") ?? [];
+      const id = ids[0] ?? "";
       const values = selection(answers[id]);
       field.disabled = disabled;
       if (field instanceof HTMLInputElement && ["radio", "checkbox"].includes(field.type)) {
         field.checked = values.includes(field.value);
       } else if (field.value !== (values[0] ?? "")) field.value = values[0] ?? "";
+      // 2026-11-27：只给已有输入或已选项着色，原题未选选项保持可读。
+      if (answerFeedback) {
+        const checkbox = field instanceof HTMLInputElement && field.type === "checkbox";
+        const choice = checkbox || (field instanceof HTMLInputElement && field.type === "radio");
+        const feedback = (choice ? field instanceof HTMLInputElement && field.checked : field.value.trim())
+          ? answerFeedback(ids, field.value, checkbox) : undefined;
+        if (feedback) {
+          field.dataset.answerFeedback = feedback;
+          if (choice && field instanceof HTMLInputElement) {
+            for (const label of field.labels ?? []) {
+              label.dataset.answerFeedback = feedback;
+              feedbackLabels.add(label);
+            }
+          }
+        } else delete field.dataset.answerFeedback;
+      }
       const group = field.dataset.dropGroup;
       if (group && field.value) {
         if (!usedByGroup.has(group)) usedByGroup.set(group, new Set());
@@ -216,7 +239,12 @@ export function ReadingPaper({ exam, answers, disabled, mediaUrl, onChange, onCo
       const used = usedByGroup.get(field.dataset.dropGroup ?? "");
       for (const option of field.options) option.disabled = option.value !== field.value && Boolean(used?.has(option.value));
     }
-  }, [answers, disabled, exam, mediaUrl]);
+    // 2026-11-27：重建题面和切换练习状态时移除上一份判分标记。
+    if (answerFeedback) return () => {
+      fields.forEach((field) => { delete field.dataset.answerFeedback; });
+      feedbackLabels.forEach((label) => { delete label.dataset.answerFeedback; });
+    };
+  }, [answers, disabled, exam, mediaUrl, answerFeedback]);
 
   return <div className="reading-paper" ref={root}>
     <article className="passage-paper paper-column" ref={passage} tabIndex={0} aria-label="阅读原文" />

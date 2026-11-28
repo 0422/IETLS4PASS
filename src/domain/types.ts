@@ -74,7 +74,7 @@ export interface AnswerResult {
 
 export interface PracticeRecord {
   id: string;
-  kind: "reading" | "listening" | "suite";
+  kind: "reading" | "listening";
   title: string;
   examId?: string;
   bankId?: string;
@@ -86,16 +86,13 @@ export interface PracticeRecord {
   details?: AnswerResult[];
   points: number | null;
   possible: number | null;
-  children?: PracticeRecord[];
   source?: "desktop" | "legacy";
   raw?: unknown;
   // 2026-11-19：附加阅读关联计时和批注，同时保留第一轮成绩兼容性。
   readingTiming?: ReadingTiming;
   annotations?: ReadingAnnotations;
-  partial?: boolean;
-  suiteTotal?: number;
-  // 2026-11-19：套题可跨篇提交，子成绩按原篇目位置关联。
-  suitePosition?: number;
+  // 2026-11-27：交卷后可以恢复本次答题的听力题面高亮。
+  questionHighlights?: PassageHighlight[];
 }
 
 export interface PracticeDraft {
@@ -106,15 +103,11 @@ export interface PracticeDraft {
   updatedAt: string;
   elapsedMs: number;
   answers: Answers;
-  // 2026-11-19：保存暂停状态、套题位置和可重复提交的冻结结果。
+  // 2026-11-28：保存单篇的暂停状态和可重复提交的冻结结果。
   paused?: boolean;
-  suiteId?: string;
-  suitePosition?: number;
   readingTiming?: ReadingTiming;
   annotations?: ReadingAnnotations;
   pendingResult?: PracticeRecord;
-  archivedAt?: string;
-  interruptReason?: string;
 }
 
 // 2026-11-19：区分已归属、未分配和不可用的阅读前台时长。
@@ -134,8 +127,6 @@ export interface ReadingTiming {
   attemptId: string;
   examId: string;
   bankId: string;
-  suiteId?: string;
-  suitePosition?: number;
   units: ReadingTimingUnit[];
   unallocatedMs: number;
   totalMs: number;
@@ -154,21 +145,6 @@ export interface ReadingAnnotations {
   notes: string;
   markedQuestions: string[];
   highlights: PassageHighlight[];
-}
-
-export interface SuiteDraft {
-  id: string;
-  startedAt: string;
-  exams: { bankId: string; examId: string; title: string }[];
-  completed: PracticeRecord[];
-  // 2026-11-19：保存套题推进方式和共享倒计时状态。
-  // 2026-11-19：模拟模式可跨篇作答，整套统一提交。
-  flowMode?: "classic" | "stationary" | "simulation";
-  activePosition?: number;
-  limitSeconds?: number;
-  pauseSinceMs?: number | null;
-  pausedTotalMs?: number;
-  stopOnTimeout?: boolean;
 }
 
 export interface Word {

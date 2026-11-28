@@ -7,11 +7,10 @@ import { Link, useSearchParams } from "react-router-dom";
 // 2026-11-20：场景和顺序视图复用单节操作与成绩。
 import { canListenToRow, latestListeningResult, listeningRows, listeningScene, listeningScenes } from "../domain/listening";
 import type { ListeningDocument, ListeningDraft, ListeningRow, ListeningScene } from "../domain/listening";
-import { submissions } from "../domain/records";
 import { desktop, desktopAvailable, documentsKey, errorText, recordsKey } from "../services/desktop";
 import { ListeningSection } from "./ListeningSection";
 // 2026-11-20：读取求职和经营管理的真题目录。
-// 2026-11-20：顺序视图按册生成四套题。
+// 2026-11-20：顺序视图按册列出四个 Test。
 import { listeningBooks, listeningCatalogGroups, listeningOrderGroups } from "../domain/listeningCatalog";
 // 2026-11-19：在题库列表自动同步目录，作答期间保持当前题源。
 import { useFolderBankSync } from "../services/folderBanks";
@@ -22,7 +21,8 @@ type Category = ListeningScene | "全部";
 
 // 2026-11-20：允许直接进入本节的标准答案和详解。
 // 2026-11-20：选中的书号随练习链接保留，退出后可返回同一册。
-function listeningLink(scene: Category, id?: string, mode?: "restart" | "listen" | "review", book?: number) {
+// 2026-11-27：区分个人交卷回看和标准答案详解。
+function listeningLink(scene: Category, id?: string, mode?: "restart" | "listen" | "review" | "result", book?: number) {
   const search = new URLSearchParams();
   if (book !== undefined) {
     search.set("view", "order");
@@ -57,14 +57,27 @@ export function Listening() {
   // 2026-11-19：只显示题库、草稿和成绩读取错误。
   const error = documents.error || saved.error || history.error || sync.error || sync.data?.[0];
   const drafts = new Map((saved.data ?? []).map((document) => [document.id, document.value]));
+  // 2026-11-27：列表和回看共用交卷记录，以提交时间选出最近一次。
+  const results = [...(history.data ?? [])].sort((a, b) => Date.parse(b.submittedAt) - Date.parse(a.submittedAt));
 
   if (open) {
     // 2026-11-20：只有作答依赖草稿，精听和详解可直接打开。
-    const practice = mode !== "listen" && mode !== "review";
+    // 2026-11-27：回看只读取正式交卷记录，保留本节未交卷的草稿。
+    const practice = mode !== "listen" && mode !== "review" && mode !== "result";
     if (practice && saved.isLoading) return <p className="muted">正在读取听力草稿…</p>;
     if (practice && saved.error) return <p className="notice danger" role="alert">{errorText(saved.error)} <Link to={back}>返回听力题库</Link></p>;
+    const result = mode === "result" ? latestListeningResult(open, results) : undefined;
+    if (mode === "result" && !result) {
+      if (history.isLoading) return <p className="muted">正在读取交卷记录…</p>;
+      return <p className="notice" role="status">{history.error ? errorText(history.error) : "本节暂无交卷记录。"} <Link to={back}>返回听力题库</Link></p>;
+    }
+    // 2026-11-27：题面和录音分开存放时，优先使用同册同节的精听资料。
+    const alternateAudio = open.book === undefined ? undefined : listeningOrderGroups(open.book, rows)
+      .find(({ test }) => test === open.test)?.items.find(({ row }) => row?.section === open.section)?.audioRow;
+    const intensiveRow = alternateAudio ?? open;
     const draft = drafts.get(open.id);
-    return <ListeningSection key={`${open.id}:${practice ? "practice" : mode}`} row={open} mode={mode} draft={draft} back={back} />;
+    return <ListeningSection key={`${open.id}:${practice ? "practice" : mode}`} row={open} mode={mode} draft={draft}
+      back={back} result={result} intensiveRow={intensiveRow} />;
   }
   if (id || (bank && exam)) {
     if (documents.isLoading) return <p className="muted">正在读取听力题库…</p>;
@@ -72,7 +85,6 @@ export function Listening() {
   }
 
   const matching = scene === "全部" ? rows : rows.filter((row) => row.scene === scene);
-  const results = submissions(history.data ?? []);
   // 2026-11-20：顶栏切换题库视图，按顺序时在顶部横排显示各册。
   const views = <nav className="study-view-tabs" aria-label="听力题库视图">
     <Link to={listeningLink(scene, undefined, undefined, book ?? listeningBooks[0])} aria-current={book !== undefined ? "page" : undefined}>按顺序</Link>
@@ -160,14 +172,16 @@ function ListeningCatalogRow({ row, scene, inProgress, result, displayTitle, sub
       : <span className="muted" aria-label="尚未提交">—</span>}</td>
     {/* 2026-11-20：已关联题源的条目使用与待添加条目一致的操作栏。 */}
     {/* 2026-11-20：保留当前册数及本节不同题源的入口。 */}
-    <td><ListeningActions scene={scene} row={row} inProgress={inProgress} book={book} audioRow={audioRow} /></td>
+    {/* 2026-11-27：用同一条记录决定成绩显示和回看入口。 */}
+    <td><ListeningActions scene={scene} row={row} inProgress={inProgress} book={book} audioRow={audioRow} hasResult={Boolean(result)} /></td>
   </tr>;
 }
 
 // 2026-11-20：题目和音频独立决定入口状态，旧题源仍可进入精听手选音频。
 // 2026-11-20：题面与答案缺失时保留精听入口，并按来源分别生成链接。
-function ListeningActions({ scene, row, inProgress, book, audioRow = row }: {
-  scene: Category; row?: ListeningRow; inProgress?: boolean; book?: number; audioRow?: ListeningRow;
+// 2026-11-27：按场景和按顺序的每行都显示交卷回看入口。
+function ListeningActions({ scene, row, inProgress, book, audioRow = row, hasResult }: {
+  scene: Category; row?: ListeningRow; inProgress?: boolean; book?: number; audioRow?: ListeningRow; hasResult?: boolean;
 }) {
   const source = row?.source;
   const canReview = source?.type === "paper" ? source.part.questions.length > 0
@@ -175,6 +189,8 @@ function ListeningActions({ scene, row, inProgress, book, audioRow = row }: {
   return <div className="table-actions listening-row-actions">
     <ListeningAction label="答题" to={row?.potentialPractice ? listeningLink(scene, row.id, undefined, book) : undefined}
       hint={inProgress ? "继续作答" : "开始作答"} unavailable="缺少可作答的本节题目" />
+    <ListeningAction label="查看" to={row && hasResult ? listeningLink(scene, row.id, "result", book) : undefined}
+      hint="回看最近一次交卷" unavailable="本节暂无交卷记录" />
     <ListeningAction label="详解" to={row && canReview ? listeningLink(scene, row.id, "review", book) : undefined}
       hint="查看标准答案与解析" unavailable="缺少本节题目或标准答案" />
     <ListeningAction label="精听" to={audioRow && canListenToRow(audioRow) ? listeningLink(scene, audioRow.id, "listen", book) : undefined}

@@ -13,11 +13,6 @@ export interface SpeakingAudio {
   endedAt: number;
 }
 
-//   // 2026-11-21：松手后等待音频线程确认，并为装置异常保留超时收尾。
-//
-//   // 2026-11-21：切换话题或关麦时取消收尾定时器。
-//     // 2026-11-21：结束或取消后释放音频端口。
-
 // 2026-11-21：麦克风和音频处理器在本场练习中复用，单次录音独立收集。
 type MicrophoneStatus = "off" | "opening" | "ready";
 type CaptureStatus = "idle" | "recording" | "finishing";
@@ -82,16 +77,6 @@ function audioFrom(capture: Capture, endedAt: number, inputRate: number): Speaki
   // 2026-11-21：一次转写和试听共用同一份音频及其时间信息。
   return { bytes, durationMs: Math.round(count * 1000 / sampleRate), endedAt };
 }
-
-//   // 2026-11-21：收尾时保持录音操作锁定，直到收到最后一批样本。
-//
-//
-//   // 2026-11-21：最后一批样本或收尾超时到达后，只处理一次录音。
-//
-//
-//     // 2026-11-21：前一次录音仍在收尾时不再打开麦克风。
-//       // 2026-11-21：收到实际音频后才提示「录音中」，收到结束确认后才发送转写。
-//
 
 // 2026-11-21：启用一次后按住即可录音，关麦或退出时统一释放连接。
 export function useSpeakingRecorder(onAudio: (audio: SpeakingAudio) => void, onError: (message: string) => void) {

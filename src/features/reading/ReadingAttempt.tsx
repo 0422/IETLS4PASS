@@ -1,13 +1,12 @@
-// 2026-11-19：连接阅读控件、计时与批注草稿，在冻结快照后提交或归档练习。
+// 2026-11-28：连接单篇阅读作答、草稿自动保存和成绩提交。
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Check, Clock3, Pause, Play } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { planForCompletion, reviewPlanId } from "../../domain/readingReview";
 import type { ReviewPlan } from "../../domain/readingReview";
 import { initializeReadingTiming } from "../../domain/readingTiming";
 import { answeredReadingQuestions, scoreReading, SCORING_VERSION } from "../../domain/scoring";
-// 2026-11-20：单篇作答与旧套题回放分开，作答页只保存单篇。
 import type { Answers, PracticeDraft, PracticeRecord, ReadingAnnotations, ReadingAsset } from "../../domain/types";
 import { MAIN_BANK, mainMedia } from "../../services/banks";
 import { desktop, documentsKey, errorText, recordsKey } from "../../services/desktop";
@@ -31,7 +30,6 @@ export function ReadingAttempt({ asset, draftId, initial, recovered, writerId, m
 }) {
   const { exam, explanation } = asset;
   const cache = useQueryClient();
-  const navigate = useNavigate();
   const [answers, setAnswers] = useState(initial.answers);
   const [annotations, setAnnotations] = useState<ReadingAnnotations>(initial.annotations ?? emptyAnnotations);
   const [paused, setPaused] = useState(Boolean(initial.paused));
@@ -122,8 +120,8 @@ export function ReadingAttempt({ asset, draftId, initial, recovered, writerId, m
   }
 
   async function refresh() {
-    // 2026-11-20：刷新单篇提交和中断涉及的数据。
-    await Promise.all((["drafts", "interrupted", "review-plans"] as const).map((category) =>
+    // 2026-11-28：提交后刷新单篇草稿、复习计划和成绩。
+    await Promise.all((["drafts", "review-plans"] as const).map((category) =>
       cache.invalidateQueries({ queryKey: documentsKey(category) })).concat(cache.invalidateQueries({ queryKey: recordsKey })));
   }
 
@@ -178,30 +176,6 @@ export function ReadingAttempt({ asset, draftId, initial, recovered, writerId, m
     flush();
   }
 
-  // 2026-11-20：主动结束当前单篇时，继续保存并打开中断归档。
-  async function interrupt() {
-    if (!writerId || busy.current || ended.current
-      || !window.confirm("结束本篇并归档当前作答？本次中断不计入正式成绩。")) return;
-    busy.current = true;
-    setPending(true);
-    setError("");
-    try {
-      // 2026-11-19：中断立即关闭最后的计时区间。
-      const interruptedTiming = latest.current.frozen?.readingTiming ?? timingSnapshot(true);
-      const revision = await save({ ...snapshot(latest.current.frozen), readingTiming: interruptedTiming });
-      if (!revision) throw new Error("本机草稿未保存。");
-      await desktop.interruptReading(draftId, revision);
-      ended.current = true;
-      await refresh();
-      navigate("/drafts", { replace: true });
-    } catch (reason) { setError(errorText(reason)); }
-    finally {
-      busy.current = false;
-      setPending(false);
-    }
-  }
-
-
   // 2026-11-20：暂停和继续只影响当前篇的计时。
   function togglePause() {
     if (busy.current || ended.current) return;
@@ -220,8 +194,8 @@ export function ReadingAttempt({ asset, draftId, initial, recovered, writerId, m
     <div className="reading-attempt-toolbar">
       <div>
         {/* 2026-11-20：单篇从原题库入口返回。 */}
-        {/* 2026-11-21：单篇作答返回新命名的阅读练习列表。 */}
-        <Link to="/library" className="back-link"><ArrowLeft size={16} />返回阅读练习</Link>
+        {/* 2026-11-28：返回链接使用侧栏的阅读题库名称。 */}
+        <Link to="/library" className="back-link"><ArrowLeft size={16} />返回阅读题库</Link>
       </div>
       {/* 2026-11-21：将作答数和可定位的题号放在工具栏中间。 */}
       {!result && <nav className="question-navigation" aria-label="答题进度">
@@ -236,9 +210,6 @@ export function ReadingAttempt({ asset, draftId, initial, recovered, writerId, m
         <span className="time" title="本篇前台有效练习用时"><Clock3 size={17} />{formatClock(clock.elapsedMs)}</span>
         {!result && !frozen && <button type="button" className="button secondary" disabled={pending} onClick={() => void togglePause()}>
           {paused ? <Play size={16} /> : <Pause size={16} />}{paused ? "继续" : "暂停"}</button>}
-        {!result && writerId && <button type="button" className="button secondary" disabled={pending || !writer.owned.current} onClick={() => void interrupt()}>
-          中断本篇
-        </button>}
         {!result && <button type="button" className="button primary" disabled={pending || !coverage || coverage.missing.length > 0 || (paused && !frozen) || !writer.owned.current}
           onClick={() => void submit()}><Check size={17} />{pending ? "正在保存…" : frozen ? "重试提交" : writerId ? "提交练习" : "评分预览"}</button>}
       </div>

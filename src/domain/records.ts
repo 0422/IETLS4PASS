@@ -1,23 +1,58 @@
-// 2026-11-19：统一套题子项、历史筛选及按实际分值加权的学习统计。
+// 2026-11-28：统一四科独立练习记录的筛选、展示及导出。
 import type { PracticeRecord } from "./types";
 import { answerText } from "./scoring";
+// 2026-11-27：口语会话在总览中按练习记录展示和导出。
+import type { SpeakingSession } from "./speakingPractice";
+// 2026-11-27：写作从原始提交记录读取和导出正文。
+import type { WritingSubmission } from "./writing";
 
-export const kindLabel = { reading: "阅读", listening: "听力", suite: "套题" } as const;
+export const kindLabel = { reading: "阅读", listening: "听力", speaking: "口语", writing: "写作" } as const;
 
-export function recordMatches(record: PracticeRecord, search: string) {
-  return [record.title, record.examId, record.category, kindLabel[record.kind]]
-    .some((value) => value?.toLowerCase().includes(search.trim().toLowerCase()));
+// 2026-11-27：统一列表所需字段，口语仍用原会话作为回放来源。
+interface SpeakingRecord {
+  id: string;
+  kind: "speaking";
+  title: string;
+  category: string;
+  elapsedMs: number;
+  submittedAt: string;
+  session: SpeakingSession;
 }
 
-export function submissions(records: PracticeRecord[]) {
-  const children = new Set(records.flatMap((record) => (record.children ?? []).map((child) => child.id)));
-  const output = new Map<string, PracticeRecord>();
-  for (const record of records) {
-    if (record.kind === "suite") {
-      for (const child of record.children ?? []) if (child.kind !== "suite") output.set(child.id, child);
-    } else if (!children.has(record.id)) output.set(record.id, record);
-  }
-  return [...output.values()];
+// 2026-11-27：写作原始提交只有正文和提交时间，用时沿用列表的缺省状态。
+interface WritingRecord {
+  id: string;
+  kind: "writing";
+  title: string;
+  category: string;
+  elapsedMs?: undefined;
+  submittedAt: string;
+  submission: WritingSubmission;
+}
+
+export type ListedPracticeRecord = PracticeRecord | SpeakingRecord | WritingRecord;
+
+export function speakingRecord(session: SpeakingSession): SpeakingRecord {
+  return {
+    id: session.id, kind: "speaking", title: session.title, category: `Part ${session.part}`,
+    elapsedMs: session.elapsedMs, submittedAt: session.updatedAt, session,
+  };
+}
+
+// 2026-11-27：用每次提交的标识回看当次作文。
+export function writingRecord(submission: WritingSubmission): WritingRecord {
+  return {
+    id: submission.id, kind: "writing", title: submission.title, category: `Task ${submission.task}`,
+    submittedAt: submission.submittedAt, submission,
+  };
+}
+
+export function recordMatches(record: ListedPracticeRecord, search: string) {
+  // 2026-11-27：写作可按保存的题号搜索。
+  const reference = record.kind === "speaking" ? record.session.book
+    : record.kind === "writing" ? record.submission.questionId : record.examId;
+  return [record.title, reference, record.category, kindLabel[record.kind]]
+    .some((value) => value?.toLowerCase().includes(search.trim().toLowerCase()));
 }
 
 export function dateText(value?: string) {
@@ -46,23 +81,37 @@ export function usableScore(record: Pick<PracticeRecord, "points" | "possible">)
     && points >= 0 && possible > 0 && points <= possible;
 }
 
-export function recordsMarkdown(records: PracticeRecord[]) {
+// 2026-11-27：练习记录导出包含已结束口语的考官问题和实际回答。
+export function recordsMarkdown(records: ListedPracticeRecord[]) {
   const escape = (value: string) => value.replace(/[|\r\n]/g, (char) => char === "|" ? "\\|" : " ");
-  const rows = (record: PracticeRecord, level: number): string[] => [
-    `${"#".repeat(level)} ${escape(record.title)}`,
-    "",
-    `- 类型 ${kindLabel[record.kind]}`,
-    `- 提交 ${dateText(record.submittedAt)}`,
-    `- 得分 ${usableScore(record) ? `${record.points} / ${record.possible}` : "—"}`,
-    `- ${record.source === "legacy" ? "原版记录用时" : "前台有效用时"} ${durationText(record.elapsedMs)}`,
-    "",
-    ...(record.details?.length ? [
-      "| 题号 | 作答 | 标准答案 | 得分 |",
-      "|---|---|---|---|",
-      ...record.details.map((detail) => `| ${escape(detail.label)} | ${escape(answerText(detail.userAnswer))} | ${escape(answerText(detail.correctAnswer))} | ${detail.points} / ${detail.possible} |`),
+  const rows = (record: ListedPracticeRecord): string[] => {
+    const header = [
+      `## ${escape(record.title)}`,
       "",
-    ] : []),
-    ...(record.children ?? []).flatMap((child) => rows(child, Math.min(level + 1, 6))),
-  ];
-  return ["# IETLS4PASS 练习记录", "", ...records.flatMap((record) => rows(record, 2))].join("\n");
+      `- 类型 ${kindLabel[record.kind]}`,
+      `- 提交 ${dateText(record.submittedAt)}`,
+    ];
+    if (record.kind === "speaking") return [
+      ...header,
+      `- ${record.category}`,
+      `- 练习用时 ${durationText(record.elapsedMs)}`,
+      "",
+      ...record.session.messages.flatMap(({ role, content }) => [`**${role === "assistant" ? "考官" : "我"}**`, "", content, ""]),
+    ];
+    // 2026-11-27：导出实际保存的作文和原始段落。
+    if (record.kind === "writing") return [...header, `- ${record.category}`, "", record.submission.answer, ""];
+    return [
+      ...header,
+      `- 得分 ${usableScore(record) ? `${record.points} / ${record.possible}` : "—"}`,
+      `- ${record.source === "legacy" ? "原版记录用时" : "前台有效用时"} ${durationText(record.elapsedMs)}`,
+      "",
+      ...(record.details?.length ? [
+        "| 题号 | 作答 | 标准答案 | 得分 |",
+        "|---|---|---|---|",
+        ...record.details.map((detail) => `| ${escape(detail.label)} | ${escape(answerText(detail.userAnswer))} | ${escape(answerText(detail.correctAnswer))} | ${detail.points} / ${detail.possible} |`),
+        "",
+      ] : []),
+    ];
+  };
+  return ["# IETLS4PASS 练习记录", "", ...records.flatMap(rows)].join("\n");
 }

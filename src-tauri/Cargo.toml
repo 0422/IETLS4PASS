@@ -19,7 +19,6 @@ sha2 = "=0.10.9"
 base64 = "=0.22.1"
 # 2026-11-19：使用 Della CRM 已锁定的原生目录选择与 PDF 打开组件。
 tauri-plugin-dialog = "=2.8.4"
-# tauri-plugin-opener = "=2.7.4"
 # 2026-11-19：与 Della CRM 的本机开文件组件版本一致。
 tauri-plugin-opener = "=2.7.3"
 # 2026-11-21：复用 BeadDiffV2 的 Rust HTTPS 客户端调用文本模型。

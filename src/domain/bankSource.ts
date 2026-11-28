@@ -1,4 +1,4 @@
-// 2026-11-19：解析上游登记数据与本地 HTML 题源，识别媒体和独立听力套题。
+// 2026-11-28：解析单篇或单节题库资料并识别关联媒体。
 import type { Answer, Answers, Category, ExamEntry, ReadingExam, ReadingGroup } from "./types";
 // 2026-11-19：听力扫描按剑雅 Section 文件名识别分节。
 import { cambridgeIdentity, listeningScene } from "./listening";
@@ -240,31 +240,18 @@ async function discoverListeningSections(files: string[], rootLabel: string) {
 }
 
 function questionIdentity(source: string | null | undefined) {
-  // 2026-11-19：原版组合题允许套题前缀及同一组答案控件使用联合题号。
-  const match = source?.split("::").at(-1)?.match(/^(?:question[_-]?|q[_-]?)?(\d+)(?:[_-](?:input|answer|\d+))*$/i);
+  const match = source?.match(/^(?:question[_-]?|q[_-]?)?(\d+)(?:[_-](?:input|answer|\d+))*$/i);
   return match ? `q${Number(match[1])}` : undefined;
 }
 
-function literalAnswers(script: string, suiteId?: string) {
+function literalAnswers(script: string) {
   const values: Answers = {};
-  for (const match of script.matchAll(/\b(?:correctAnswers|answer_?key|answerMap|answers|suiteAnswers)\s*(?::|=)\s*(\{)/gi)) {
-    let source = scanContainer(script, match.index + match[0].length - 1);
+  for (const match of script.matchAll(/\b(?:correctAnswers|answer_?key|answerMap|answers)\s*(?::|=)\s*(\{)/gi)) {
+    const source = scanContainer(script, match.index + match[0].length - 1);
     if (!source) continue;
-    let isolated = false;
-    if (suiteId && /^[\w.-]+$/.test(suiteId)) {
-      const escaped = suiteId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const nested = new RegExp(`[,{]\\s*["']?${escaped}["']?\\s*:\\s*\\{`).exec(source);
-      if (nested) {
-        const section = scanContainer(source, nested.index + nested[0].length - 1);
-        if (section) { source = section; isolated = true; }
-      }
-    }
     const stringLiteral = /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/;
-    const pair = new RegExp(`(?:[{,]\\s*)["']?((?:[\\w.-]+::)?(?:q(?:uestion)?[_-]?)?\\d+(?:[_-]\\d+)*)["']?\\s*:\\s*(${stringLiteral.source}|\\[[^\\[\\]{}]*\\])(?=\\s*[,}])`, "gi");
+    const pair = new RegExp(`(?:[{,]\\s*)["']?((?:q(?:uestion)?[_-]?)?\\d+(?:[_-]\\d+)*)["']?\\s*:\\s*(${stringLiteral.source}|\\[[^\\[\\]{}]*\\])(?=\\s*[,}])`, "gi");
     for (const [, key, raw] of source.matchAll(pair)) {
-      const prefixed = key.includes("::");
-      if (suiteId && !isolated && (!prefixed || key.split("::")[0] !== suiteId)) continue;
-      if (!suiteId && prefixed) continue;
       const id = questionIdentity(key);
       const readString = (literal: string) => {
         if (literal.startsWith('"')) { try { return JSON.parse(literal) as string; } catch { return ""; } }
@@ -295,71 +282,63 @@ export function localImageRefs(html: string, files: string[], directory: string,
   return template.innerHTML;
 }
 
-export function legacyHtmlPapers(html: string, entry: LocalEntry, files: string[], kind: "reading" | "listening") {
+// 2026-11-28：本机 HTML 只解析单篇阅读或单节听力。
+export function legacyHtmlPaper(html: string, entry: LocalEntry, files: string[], kind: "reading" | "listening") {
   const template = document.createElement("template");
   template.innerHTML = html;
   const root = template.content;
+  if (kind === "listening") {
+    const selector = "[data-suite-id], .suite, .suite-container, .test-page, .practice-test, .test-set";
+    const sections = [...root.querySelectorAll(selector)].filter((element) =>
+      element.querySelector("input[name], select[name], textarea[name]") && !element.parentElement?.closest(selector));
+    if (sections.length > 1) throw new Error("请将听力 HTML 按 Section 分开存放。");
+  }
   const scripts = [...root.querySelectorAll("script")].map((script) => script.textContent ?? "");
-  // 2026-11-19：只传脚本文本，避免数组下标被误当成套题标识。
-  const globalAnswers = Object.assign({} as Answers, ...scripts.map((script) => literalAnswers(script)));
+  const keys = Object.assign({} as Answers, ...scripts.map(literalAnswers));
   const title = root.querySelector("title, h1")?.textContent?.trim() || entry.title;
-  // 2026-11-19：跟随原版 enhancer 读取组合题源的常见容器。
-  const selector = "[data-suite-id], .suite, .suite-container, .test-page, .practice-test, .test-set";
-  const independently = [...root.querySelectorAll<HTMLElement>(selector)].filter((group) =>
-    group.querySelector("input[name], select[name], textarea[name]") && !group.parentElement?.closest(selector));
-  const scopes: (DocumentFragment | HTMLElement)[] = kind === "listening" && independently.length > 1 ? independently : [root];
   const media: Record<string, string> = {};
   const directory = parent(entry.file ?? "");
-  const papers = scopes.map((scope, index) => {
-    const sectionTitle = scopes.length > 1 ? scope.querySelector("h2,h3,h4,legend")?.textContent?.trim() || `第 ${index + 1} 套` : title;
-    const suite = scope instanceof HTMLElement ? scope.dataset.suiteId || scope.id || `set${index + 1}` : undefined;
-    const keys = scopes.length === 1 ? { ...globalAnswers } : Object.assign({} as Answers, ...scripts.map((script) => literalAnswers(script, suite)));
-    const groupScripts = [...scope.querySelectorAll("script")].map((script) => script.textContent ?? "");
-    // 2026-11-19：套题内部脚本按文本读取。
-    Object.assign(keys, ...groupScripts.map((script) => literalAnswers(script)));
-    const ids = new Set<string>();
-    const multi = new Set<string>();
-    for (const control of scope.querySelectorAll("input,select,textarea")) {
-      const id = questionIdentity(control.getAttribute("name")) ?? questionIdentity(control.getAttribute("data-q"))
-        ?? questionIdentity(control.getAttribute("id"));
-      if (!id) continue;
-      const type = control.getAttribute("type") ?? "text";
-      if (!["text", "radio", "checkbox", "search"].includes(type)) continue;
-      ids.add(id);
-      if (type === "checkbox") multi.add(id);
-      control.setAttribute("name", id);
-      const marked = control.getAttribute("data-answer")?.trim();
-      if (marked && (type !== "radio" && type !== "checkbox")) keys[id] = marked;
-      if ((control.hasAttribute("data-correct") && control.getAttribute("data-correct") !== "false")
-        || marked?.toLowerCase() === "true" && (type === "radio" || type === "checkbox")) {
-        const value = control.getAttribute("value");
-        if (value && type === "radio") keys[id] = value;
-        const previous = keys[id];
-        if (value && type === "checkbox") keys[id] = [...new Set([...(Array.isArray(previous) ? previous : []), value])];
-      }
+  const ids = new Set<string>();
+  const multi = new Set<string>();
+  for (const control of root.querySelectorAll("input,select,textarea")) {
+    const id = questionIdentity(control.getAttribute("name")) ?? questionIdentity(control.getAttribute("data-q"))
+      ?? questionIdentity(control.getAttribute("id"));
+    if (!id) continue;
+    const type = control.getAttribute("type") ?? "text";
+    if (!["text", "radio", "checkbox", "search"].includes(type)) continue;
+    ids.add(id);
+    if (type === "checkbox") multi.add(id);
+    control.setAttribute("name", id);
+    const marked = control.getAttribute("data-answer")?.trim();
+    if (marked && (type !== "radio" && type !== "checkbox")) keys[id] = marked;
+    if ((control.hasAttribute("data-correct") && control.getAttribute("data-correct") !== "false")
+      || marked?.toLowerCase() === "true" && (type === "radio" || type === "checkbox")) {
+      const value = control.getAttribute("value");
+      if (value && type === "radio") keys[id] = value;
+      const previous = keys[id];
+      if (value && type === "checkbox") keys[id] = [...new Set([...(Array.isArray(previous) ? previous : []), value])];
     }
-    scope.querySelectorAll("script,style,link,iframe,button").forEach((element) => element.remove());
-    const article = kind === "reading" ? scope.querySelector<HTMLElement>("article, .passage, #passage, .reading-passage, #left") : undefined;
-    const passageHtml = article?.innerHTML ?? "";
-    article?.remove();
-    const body = document.createElement("div");
-    body.append(scope.cloneNode(true));
-    const content = localImageRefs(body.innerHTML, files, directory, media);
-    const questionOrder = [...ids].sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
-    const graded = questionOrder.length > 0 && questionOrder.every((id) => Object.hasOwn(keys, id));
-    const group: ReadingGroup = { groupId: "legacy", kind: "other", questionIds: questionOrder, bodyHtml: content };
-    const exam: ReadingExam = {
-      examId: scopes.length > 1 ? `${entry.examId}-${index + 1}` : entry.examId,
-      meta: { title: sectionTitle, category: entry.category === "P4" ? "P3" : entry.category },
-      passage: { blocks: [{ blockId: "source-passage", kind: "html", html: localImageRefs(passageHtml, files, directory, media) }] },
-      questionGroups: [group], questionOrder, answerKey: keys,
-      scoringGroups: [...multi].map((id) => ({
-        groupId: `checkbox-${id}`, kind: kind === "listening" ? "listening-set" : "multi_choice",
-        questionIds: [id], bodyHtml: '<input type="checkbox">',
-      })),
-    };
-    return { exam, graded };
-  });
+  }
+  root.querySelectorAll("script,style,link,iframe,button").forEach((element) => element.remove());
+  const article = kind === "reading" ? root.querySelector<HTMLElement>("article, .passage, #passage, .reading-passage, #left") : undefined;
+  const passageHtml = article?.innerHTML ?? "";
+  article?.remove();
+  const body = document.createElement("div");
+  body.append(root.cloneNode(true));
+  const content = localImageRefs(body.innerHTML, files, directory, media);
+  const questionOrder = [...ids].sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
+  const graded = questionOrder.length > 0 && questionOrder.every((id) => Object.hasOwn(keys, id));
+  const group: ReadingGroup = { groupId: "legacy", kind: "other", questionIds: questionOrder, bodyHtml: content };
+  const exam: ReadingExam = {
+    examId: entry.examId,
+    meta: { title, category: entry.category === "P4" ? "P3" : entry.category },
+    passage: { blocks: [{ blockId: "source-passage", kind: "html", html: localImageRefs(passageHtml, files, directory, media) }] },
+    questionGroups: [group], questionOrder, answerKey: keys,
+    scoringGroups: [...multi].map((id) => ({
+      groupId: `checkbox-${id}`, kind: kind === "listening" ? "listening-set" : "multi_choice",
+      questionIds: [id], bodyHtml: '<input type="checkbox">',
+    })),
+  };
   const audioSource = root.querySelector("audio[src], audio source[src]")?.getAttribute("src") ?? undefined;
-  return { papers, media, audio: entry.audio ?? findResource(files, audioSource, directory) };
+  return { exam, graded, media, audio: entry.audio ?? findResource(files, audioSource, directory) };
 }

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 // 2026-11-19：阅读、听力在题库页打开时定期同步本机目录索引。
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 // 2026-11-20：扫描听力时同时读取按册导出的精听资料。
-import { discoverEntries, discoverListeningExports, findResource, legacyHtmlPapers, localImageRefs, parent, registeredJson, sourceEntries } from "../domain/bankSource";
+import { discoverEntries, discoverListeningExports, findResource, legacyHtmlPaper, localImageRefs, parent, registeredJson, sourceEntries } from "../domain/bankSource";
 import type { FolderCatalog, LocalEntry } from "../domain/bankSource";
 import type { Explanation, ReadingAsset, ReadingExam, ReadingIndex } from "../domain/types";
 import { desktop, desktopAvailable, documentsKey } from "./desktop";
@@ -132,8 +132,8 @@ export async function folderReadingAsset(catalog: FolderCatalog, requestedId: st
   if (!entry.file) return referenceAsset(entry);
   const text = await desktop.bankText(catalog.folderId, entry.file);
   if (entry.kind === "html") {
-    const { papers, media } = legacyHtmlPapers(text, entry, catalog.files, "reading");
-    return { exam: papers[0].exam, explanation: null, pdfPath: entry.pdf, localMedia: media, resourceOnly: !papers[0].graded };
+    const { exam, graded, media } = legacyHtmlPaper(text, entry, catalog.files, "reading");
+    return { exam, explanation: null, pdfPath: entry.pdf, localMedia: media, resourceOnly: !graded };
   }
   const asset = entry.kind === "converted"
     ? JSON.parse(text.replace(/^\uFEFF/, "")) as ReadingAsset

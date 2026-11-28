@@ -8,6 +8,8 @@ import { desktop, desktopAvailable, documentsKey, errorText } from "../services/
 import { vocabularyRemovals } from "../services/vocabularyRemovals";
 import { Backups } from "./Backups";
 import { Diagnostics } from "./Diagnostics";
+// 2026-11-27：在日志页维护本机的考试计划。
+import { ExamPlanSettings } from "./ExamPlanSettings";
 // 2026-11-23：系统设置提供统一资源目录入口。
 import { ResourceDirectories } from "./ResourceDirectories";
 
@@ -116,6 +118,8 @@ export function LogSettings() {
   const diagnostic = check.data;
   return <>
     {!enabled && <p className="notice">本地诊断和数据检查在桌面应用中可用。</p>}
+    {/* 2026-11-27：考试计划放在日志页顶部，日历可在卡片下方展开。 */}
+    <ExamPlanSettings />
     <Diagnostics />
     <section className="card settings-card">
       {/* 2026-11-21：数据检查区块直接显示标题与检查按钮。 */}
